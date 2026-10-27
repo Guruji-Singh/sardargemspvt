@@ -466,7 +466,6 @@
         <label class="card-pick" for="cardIn"><img id="cardPrev" alt="" hidden><span id="cardLbl">📷 Take or choose a photo</span></label>
         <input type="file" id="cardIn" accept="image/*" capture="environment" hidden>
       </div>
-      <div class="info" id="regInfo">Add your <b>GST number</b> or <b>visiting card</b> for instant access. Accounts in Punjab are approved by our team, usually within a day.</div>
       <div class="f"><label>Choose a password</label><input name="password" type="password" autocomplete="new-password" minlength="6" required><div class="hint">At least 6 characters</div></div>
       <div class="err" data-err></div>
       <button class="btn btn-gold" type="submit">Create account</button>
@@ -753,14 +752,7 @@ $('footAcct').onclick = () => FEED && FEED.viewer ? openMe() : openAuth('login')
 $('statusBtn').onclick = () => openAuth('register');
 $('heroJoin').onclick = () => openAuth('register');
 
-function updateRegInfo(){
-  const f = $('fReg'), st = f.state.value, g = f.gstin.value.trim().toUpperCase();
-  const punjab = st==='Punjab' || g.startsWith('03');
-  $('regInfo').innerHTML = punjab
-    ? 'Accounts in <b>Punjab</b> are approved by our team, usually within a day. You can browse the first designs meanwhile.'
-    : 'Add your <b>GST number</b> or <b>visiting card</b> for instant access. Otherwise our team approves within a day.';
-}
-$('fReg').state.addEventListener('change', updateRegInfo); $('fReg').gstin.addEventListener('input', updateRegInfo);
+
 
 let cardData = null;
 $('cardIn').addEventListener('change', async e => {
