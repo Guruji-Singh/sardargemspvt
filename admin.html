@@ -51,6 +51,14 @@
   .empty{color:var(--muted);font-size:14px;text-align:center;padding:20px 0}
   .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:20}
   .toast.on{opacity:1}
+  .pur{display:flex;gap:8px;flex-wrap:wrap}
+  .pur button{min-width:58px;height:44px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:600;font-size:15px;cursor:pointer}
+  .pur button.on{background:var(--gold);border-color:var(--gold);color:#fff}
+  .qi .pp{font-size:12px;color:var(--gold);font-weight:700;margin-left:6px}
+  .li .pk{position:absolute;bottom:22px;left:6px;font-size:10.5px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:30}
+  .sheet .box{background:#fff;width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .sheet .acts2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -73,6 +81,8 @@
       <h2>Add products</h2>
       <label for="cat">Category</label>
       <select id="cat"></select>
+      <label>Purity available <span style="font-weight:400">(tap all that apply)</span></label>
+      <div class="pur" id="pur"></div>
       <label for="code">Product code</label>
       <input type="text" id="code" autocomplete="off">
       <div class="hint">Numbers continue automatically (001, 002 …). Several files at once get the next numbers in order.</div>
@@ -97,12 +107,28 @@
   </section>
 </main>
 <div class="toast" id="toast"></div>
+<div class="sheet" id="sheet" hidden>
+  <div class="box">
+    <h2>Edit product</h2>
+    <label for="eCode">Product code</label>
+    <input type="text" id="eCode" autocomplete="off">
+    <label>Purity available</label>
+    <div class="pur" id="ePur"></div>
+    <div class="acts2"><button class="btn btn-soft" id="eCancel">Cancel</button><button class="btn btn-main" id="eSave">Save</button></div>
+  </div>
+</div>
 
 <script>
 /* Same categories as the website (keep in sync with index.html) */
 const CATS = ["Baby Tops","Nose Pins","Sania Bali","Ladies Rings","Gents Rings","Rajwadi","Fishlock Bali","Jadau Sets","Pendant Sets","Mangalsutra","Marathi Nath","Pipe Bali","Cocktail Rings","2-in-1 Studs","Other"];
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const MAX_VIDEO_MB = 100, MAX_IMAGE_MB = 10;
+const PURITIES = ["14K","16K","18K","20K","22K"];
+function purityPicker(el, selected, onChange){
+  el.innerHTML = PURITIES.map(p=>`<button type="button" data-p="${p}" class="${selected.includes(p)?'on':''}">${p}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('button[data-p]'); if (!b) return; b.classList.toggle('on'); onChange && onChange(); };
+}
+const pickedPurity = el => [...el.querySelectorAll('button.on')].map(b=>b.dataset.p);
 const $ = id => document.getElementById(id);
 const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const store = { get(k){ try{return localStorage.getItem(k)}catch(e){return null} }, set(k,v){ try{localStorage.setItem(k,v)}catch(e){} }, del(k){ try{localStorage.removeItem(k)}catch(e){} } };
@@ -140,6 +166,8 @@ $('logout').onclick = () => { store.del('sjh_pw'); location.reload(); };
 /* ---------- categories + codes ---------- */
 $('cat').innerHTML = CATS.map(c=>`<option value="${slug(c)}">${c}</option>`).join('');
 $('libCat').innerHTML = '<option value="">All categories</option>' + CATS.map(c=>`<option value="${slug(c)}">${c}</option>`).join('');
+let savedPur = []; try { savedPur = JSON.parse(store.get('sjh_pur')||'[]'); } catch(e){}
+purityPicker($('pur'), savedPur, ()=>store.set('sjh_pur', JSON.stringify(pickedPurity($('pur')))));
 const lastCat = store.get('sjh_cat'); if (lastCat && CATS.some(c=>slug(c)===lastCat)) $('cat').value = lastCat;
 
 function catName(s){ return CATS.find(c=>slug(c)===s) || s; }
@@ -165,6 +193,8 @@ function queueFiles(files){
   $('upErr').textContent = '';
   if (!files.length) return;
   const cat = $('cat').value;
+  const purity = pickedPurity($('pur'));
+  if (!purity.length && !confirm('No purity selected. Upload without purity?')) return;
   // first file uses the code typed in the box; following files continue the numbering
   const typed = $('code').value.trim() || `${codePrefix(cat)} ${String(nextNumber(cat)).padStart(3,'0')}`;
   const m = typed.match(/^(.*?)(\d+)\s*$/);
@@ -181,24 +211,24 @@ function queueFiles(files){
     }
     const code = (i===0 && !m) ? typed : `${prefix}${String(n).padStart(width,'0')}`.trim();
     (pending[cat] = pending[cat] || []).push(n);
-    upload(f, cat, code, n);
+    upload(f, cat, code, n, purity);
     n++;
   });
   suggest();
 }
 
 /* ---------- upload one file straight to Cloudinary ---------- */
-async function upload(file, cat, code, num){
+async function upload(file, cat, code, num, purity){
   const el = document.createElement('div'); el.className = 'qi';
   const local = URL.createObjectURL(file);
   el.innerHTML = (file.type.startsWith('video/') ? `<video class="th" src="${local}#t=0.1" muted playsinline preload="metadata"></video>` : `<img class="th" src="${local}">`) +
-    `<div><div class="code">${esc(code)}</div><div class="bar"><i></i></div><div class="st">Preparing…</div></div>`;
+    `<div><div class="code">${esc(code)}<span class="pp">${esc(purity.join(' · '))}</span></div><div class="bar"><i></i></div><div class="st">Preparing…</div></div>`;
   $('queue').prepend(el);
   const bar = el.querySelector('.bar i'), st = el.querySelector('.st');
   const done = () => { pending[cat] = (pending[cat]||[]).filter(x=>x!==num); };
 
   try{
-    const s = await api({action:'sign', cat, code});
+    const s = await api({action:'sign', cat, code, purity});
     const fd = new FormData();
     fd.append('file', file);
     ['api_key','timestamp','signature','folder','tags','context'].forEach(k => fd.append(k, k==='api_key' ? s.apiKey : s[k]));
@@ -211,7 +241,7 @@ async function upload(file, cat, code, num){
       x.send(fd);
     }).then(j => {
       bar.style.width = '100%'; st.textContent = 'Uploaded ✓ — live on the site within a minute'; st.className = 'st ok';
-      LIB.unshift({ code, cat, publicId:j.public_id, resourceType:j.resource_type, type:j.resource_type==='video'?'video':'image',
+      LIB.unshift({ code, cat, purity, publicId:j.public_id, resourceType:j.resource_type, type:j.resource_type==='video'?'video':'image',
         thumbnail: j.resource_type==='video' ? j.secure_url.replace(/\.[^.]+$/,'.jpg').replace('/upload/','/upload/so_0,w_300/') : j.secure_url.replace('/upload/','/upload/w_300/') });
       renderLib();
     });
@@ -227,7 +257,7 @@ async function loadLib(){
     const r = await fetch('/api/products?fresh=' + Date.now());
     const j = await r.json();
     if (j.error) $('upErr').textContent = 'List: ' + j.error;
-    LIB = (j.items||[]).map(x=>({code:x.code, cat:x.cat, publicId:x.publicId, resourceType:x.resourceType, type:x.type, thumbnail:x.thumbnail}));
+    LIB = (j.items||[]).map(x=>({code:x.code, cat:x.cat, purity:x.purity||[], publicId:x.publicId, resourceType:x.resourceType, type:x.type, thumbnail:x.thumbnail}));
   }catch(e){ $('upErr').textContent = 'Could not load uploaded items.'; }
   renderLib(); suggest();
 }
@@ -239,7 +269,8 @@ function renderLib(){
   $('lib').innerHTML = list.map(x=>`<div class="li" data-id="${esc(x.publicId)}">
       <img loading="lazy" src="${esc(x.thumbnail)}" alt="">
       ${x.type==='video'?'<span class="vid">▶</span>':''}
-      <div class="acts"><button data-a="rename" title="Change code">✎</button><button data-a="delete" title="Delete">🗑</button></div>
+      <div class="acts"><button data-a="rename" title="Edit code / purity">✎</button><button data-a="delete" title="Delete">🗑</button></div>
+      ${x.purity && x.purity.length ? `<span class="pk">${esc(x.purity.join(' · '))}</span>` : ''}
       <div class="c">${esc(x.code||catName(x.cat))}</div></div>`).join('');
 }
 $('lib').addEventListener('click', async e => {
@@ -251,12 +282,31 @@ $('lib').addEventListener('click', async e => {
       await api({action:'delete', publicId:it.publicId, resourceType:it.resourceType});
       LIB = LIB.filter(x=>x!==it); renderLib(); toast('Deleted');
     } else {
-      const code = prompt('Product code', it.code); if (code===null || !code.trim()) return;
-      await api({action:'rename', publicId:it.publicId, resourceType:it.resourceType, code:code.trim()});
-      it.code = code.trim(); renderLib(); toast('Saved');
+      openEdit(it);
     }
   }catch(err){ toast(err.message); }
 });
+
+/* ---------- edit sheet ---------- */
+let editing = null;
+function openEdit(it){
+  editing = it; $('eCode').value = it.code || '';
+  purityPicker($('ePur'), it.purity || []);
+  $('sheet').hidden = false;
+}
+$('eCancel').onclick = () => { $('sheet').hidden = true; editing = null; };
+$('sheet').addEventListener('click', e => { if (e.target.id==='sheet') $('eCancel').click(); });
+$('eSave').onclick = async () => {
+  if (!editing) return;
+  const code = $('eCode').value.trim(), purity = pickedPurity($('ePur'));
+  if (!code) return toast('Enter a product code');
+  $('eSave').disabled = true;
+  try{
+    await api({action:'rename', publicId:editing.publicId, resourceType:editing.resourceType, code, purity});
+    editing.code = code; editing.purity = purity; renderLib(); toast('Saved'); $('sheet').hidden = true; editing = null;
+  }catch(err){ toast(err.message); }
+  $('eSave').disabled = false;
+};
 
 /* auto-login if password saved on this phone */
 if (PW) login(PW); else suggest();

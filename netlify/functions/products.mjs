@@ -59,6 +59,7 @@ function toItem(r, cloud) {
     code: c.code || "",
     caption: c.code || "",
     cat: c.cat || "",
+    purity: c.purity ? String(c.purity).split(",").filter(Boolean) : [],
     permalink: "",
     timestamp: r.created_at
   };
