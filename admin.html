@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>Upload Products — Sardar Jewellery House</title>
+<title>Admin — Sardar Jewellery House</title>
 <meta name="theme-color" content="#5A1A22">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235A1A22'/%3E%3Ctext x='32' y='42' font-family='Georgia,serif' font-size='26' text-anchor='middle' fill='%23D9B978'%3ESJH%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -59,11 +59,31 @@
   .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:30}
   .sheet .box{background:#fff;width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
   .sheet .acts2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  .tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--cream);border-radius:12px;padding:4px;margin-bottom:14px}
+  .tabs button{border:0;background:none;height:44px;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;font-size:15px}
+  .tabs button.on{background:#fff;color:var(--maroon);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .badge{display:inline-block;min-width:20px;height:20px;border-radius:10px;background:var(--red);color:#fff;font-size:12px;line-height:20px;padding:0 6px;margin-left:4px}
+  .cf{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px}
+  .cf button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer}
+  .cf button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .cust{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+  .cust .h{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .cust b{font-size:16px}
+  .cust .s{font-size:13px;color:var(--muted);margin-top:2px}
+  .st-pill{font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 8px;text-transform:uppercase;white-space:nowrap}
+  .st-approved{background:#e7f6ec;color:#14532d}.st-pending{background:#fff4e0;color:#8a5300}.st-rejected,.st-blocked{background:#fde8e8;color:#9b1c1c}
+  .cust .meta{font-size:13px;margin-top:8px;display:grid;gap:3px}
+  .cust .meta a{color:var(--maroon);font-weight:600}
+  .cust .card-img{width:100%;max-height:180px;object-fit:contain;border-radius:8px;background:var(--cream);margin-top:8px}
+  .cust .acts3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+  .cust .acts3 button,.cust .acts3 a{height:40px;border-radius:9px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13px;cursor:pointer;display:grid;place-items:center}
+  .cust .acts3 .ap{background:#1f8f4e;border-color:#1f8f4e;color:#fff}
+  .cust .acts3 .rj{color:var(--red)}
   [hidden]{display:none!important}
 </style>
 </head>
 <body>
-<div class="top"><b>SJH · Upload</b><span><a href="/" target="_blank">View site</a> &nbsp; <button id="logout" hidden>Log out</button></span></div>
+<div class="top"><b>SJH · Admin</b><span><a href="/" target="_blank">View site</a> &nbsp; <button id="logout" hidden>Log out</button></span></div>
 
 <main>
   <!-- Login -->
@@ -77,6 +97,8 @@
 
   <!-- Upload -->
   <section id="app" hidden>
+    <div class="tabs"><button class="on" data-tab="products">Products</button><button data-tab="customers">Customers <span class="badge" id="pendBadge" hidden></span></button></div>
+    <div id="tabProducts">
     <div class="card">
       <h2>Add products</h2>
       <label for="cat">Category</label>
@@ -103,6 +125,19 @@
       <div class="filter"><select id="libCat"></select></div>
       <div class="lib" id="lib"></div>
       <div class="empty" id="libEmpty" hidden>Nothing uploaded in this category yet.</div>
+    </div>
+    </div>
+    <div id="tabCustomers" hidden>
+      <div class="card">
+        <h2>Retailer accounts</h2>
+        <div class="cf" id="cFilter">
+          <button class="on" data-s="pending">Waiting</button><button data-s="approved">Approved</button><button data-s="all">All</button><button data-s="rejected">Rejected / blocked</button>
+        </div>
+        <input type="text" id="cSearch" placeholder="Search name, shop, city, mobile, GST" style="height:44px;font-size:15px;margin-bottom:10px">
+        <div id="cList"></div>
+        <div class="empty" id="cEmpty" hidden>No accounts here.</div>
+        <div class="err" id="cErr"></div>
+      </div>
     </div>
   </section>
 </main>
@@ -152,6 +187,7 @@ async function login(pw){
     await api({action:'check'});
     store.set('sjh_pw', pw);
     $('login').hidden = true; $('app').hidden = false; $('logout').hidden = false;
+    loadCustomers();
     loadLib();
   }catch(e){
     store.del('sjh_pw'); PW = '';
@@ -254,9 +290,7 @@ async function upload(file, cat, code, num, purity){
 /* ---------- library ---------- */
 async function loadLib(){
   try{
-    const r = await fetch('/api/products?fresh=' + Date.now());
-    const j = await r.json();
-    if (j.error) $('upErr').textContent = 'List: ' + j.error;
+    const j = await api({action:'list'});
     LIB = (j.items||[]).map(x=>({code:x.code, cat:x.cat, purity:x.purity||[], publicId:x.publicId, resourceType:x.resourceType, type:x.type, thumbnail:x.thumbnail}));
   }catch(e){ $('upErr').textContent = 'Could not load uploaded items.'; }
   renderLib(); suggest();
@@ -307,6 +341,72 @@ $('eSave').onclick = async () => {
   }catch(err){ toast(err.message); }
   $('eSave').disabled = false;
 };
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x===b));
+  $('tabProducts').hidden = b.dataset.tab!=='products'; $('tabCustomers').hidden = b.dataset.tab!=='customers';
+  if (b.dataset.tab==='customers') loadCustomers();
+});
+
+/* ---------- customers ---------- */
+let CUST = [], cFilter = 'pending';
+const APPROVAL = { 'auto-gst':'Auto-approved (GST number)', 'auto-card':'Auto-approved (visiting card) — please check the card', 'punjab-manual':'Punjab — needs your approval', 'manual':'No GST / card — needs your approval', 'manual-approved':'Approved by you' };
+const dt = s => s ? new Date(s).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}) : '—';
+async function loadCustomers(){
+  $('cErr').textContent = '';
+  try{ const j = await api({action:'customers'}); CUST = j.customers || []; }
+  catch(e){ $('cErr').textContent = e.message; CUST = []; }
+  const n = CUST.filter(c=>c.status==='pending').length;
+  $('pendBadge').hidden = !n; $('pendBadge').textContent = n;
+  renderCustomers();
+}
+$('cFilter').onclick = e => { const b = e.target.closest('button'); if (!b) return; cFilter = b.dataset.s; $('cFilter').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b)); renderCustomers(); };
+$('cSearch').oninput = renderCustomers;
+function renderCustomers(){
+  const q = $('cSearch').value.trim().toLowerCase();
+  const list = CUST.filter(c => cFilter==='all' || (cFilter==='rejected' ? (c.status==='rejected'||c.status==='blocked') : c.status===cFilter))
+    .filter(c => !q || [c.name,c.shop,c.city,c.state,c.phone,c.gstin].join(' ').toLowerCase().includes(q));
+  $('cEmpty').hidden = !!list.length;
+  $('cList').innerHTML = list.map(c => {
+    const wa = 'https://wa.me/91' + c.phone + '?text=' + encodeURIComponent(c.status==='approved'
+      ? `Hi ${c.name}, your retailer account on sardargems.com is approved. Log in with your mobile number to see all our designs. — Sardar Jewellery House`
+      : `Hi ${c.name}, thank you for registering on sardargems.com. — Sardar Jewellery House`);
+    return `<div class="cust" data-id="${c.id}">
+      <div class="h"><div><b>${esc(c.shop)}</b><div class="s">${esc(c.name)} · ${esc(c.city)}, ${esc(c.state)}</div></div><span class="st-pill st-${c.status}">${c.status}</span></div>
+      <div class="meta">
+        <div>📱 <a href="tel:+91${c.phone}">${c.phone}</a> · <a href="${wa}" target="_blank" rel="noopener">WhatsApp</a></div>
+        <div>GST: ${c.gstin ? esc(c.gstin) : '—'}</div>
+        <div>${esc(APPROVAL[c.approval] || c.approval || '')}</div>
+        <div class="s">Joined ${dt(c.created_at)} · last login ${dt(c.last_login)} · ${c.login_count||0} logins</div>
+        ${c.card_url ? `<a href="${esc(c.card_url)}" target="_blank" rel="noopener"><img class="card-img" loading="lazy" src="${esc(c.card_url.replace('/upload/','/upload/w_600,q_auto/'))}" alt="Visiting card"></a>` : ''}
+      </div>
+      <div class="acts3">
+        ${c.status!=='approved' ? '<button class="ap" data-act="approved">Approve</button>' : '<button data-act="pending">Move to waiting</button>'}
+        ${c.status==='rejected'||c.status==='blocked' ? '<button data-act="pending">Restore</button>' : '<button class="rj" data-act="'+(c.status==='approved'?'blocked':'rejected')+'">'+(c.status==='approved'?'Block':'Reject')+'</button>'}
+        <button data-act="reset">New password</button>
+      </div></div>`;
+  }).join('');
+}
+$('cList').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const id = b.closest('.cust').dataset.id, c = CUST.find(x=>x.id===id), act = b.dataset.act;
+  try{
+    if (act==='reset'){
+      const pw = prompt(`New password for ${c.name} (min 6 characters). Send it to them on WhatsApp after saving.`); if (!pw) return;
+      await api({action:'reset-password', id, password:pw}); toast('Password changed');
+      window.open('https://wa.me/91' + c.phone + '?text=' + encodeURIComponent(`Hi ${c.name}, your new password for sardargems.com is: ${pw}`), '_blank');
+      return;
+    }
+    if ((act==='rejected'||act==='blocked') && !confirm(`${act==='blocked'?'Block':'Reject'} ${c.shop}? They will lose access.`)) return;
+    b.disabled = true;
+    await api({action:'set-status', id, status:act});
+    c.status = act; if (act==='approved') c.approval = 'manual-approved';
+    toast(act==='approved' ? 'Approved — tap WhatsApp to tell them' : 'Saved');
+    const n = CUST.filter(x=>x.status==='pending').length; $('pendBadge').hidden = !n; $('pendBadge').textContent = n;
+    renderCustomers();
+  }catch(err){ toast(err.message); b.disabled = false; }
+});
 
 /* auto-login if password saved on this phone */
 if (PW) login(PW); else suggest();

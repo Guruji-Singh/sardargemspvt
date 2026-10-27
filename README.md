@@ -47,7 +47,7 @@ Each Instagram post (photo, reel or carousel) is placed in a category when its *
 ## Adding your own photos/videos (without Instagram)
 1. On GitHub open the `media` folder, then the category folder (e.g. `media/nose-pins`). Use `media/latest` for items with no category.
 2. Click **Add file → Upload files**, drag in photos (.jpg/.png) or videos (.mp4), click **Commit changes**.
-3. Netlify redeploys automatically; the files appear on the site in ~1 minute, before Instagram posts.
+3. Netlify redeploys automatically; the files appear on the site in ~1 minute. Files in `media/latest` show under "Other Designs".
 - Limit: 25 MB per file via the GitHub website. Compress big videos first (WhatsApp-sending a video to yourself and saving it works).
 - Use .mp4 for videos (iPhone .mov may not play in Chrome).
 - To remove: open the file on GitHub → ⋯ → Delete file → Commit.
@@ -62,3 +62,19 @@ Upload product photos/videos straight from your phone. Files are stored on Cloud
 Then Deploys → Trigger deploy.
 
 Tips: add the page to your phone's home screen (browser menu → Add to Home screen). Keep clips 2–3 s, phone held upright, plain background, good light. Limits: video 100 MB, photo 10 MB.
+
+
+## Retailer accounts (guest limit + approvals)
+- Guests (and accounts waiting for approval) see the **first 10 designs of each collection**; approved retailers see everything. Enforced on the server (`/api/feed`), not just hidden on the page.
+- Sign-up: mobile + password, name, shop, city, state, optional GST number, optional visiting-card photo.
+- Approval rules: **Punjab** (state or GSTIN starting 03) → always manual · valid GSTIN → instant · visiting card → instant (check it later in admin) · neither → manual.
+- GST numbers are checked for correct format and check-digit only — not against the government register.
+- Approve / reject / block / reset passwords at **sardargems.com/admin → Customers**. Blocking or resetting a password logs that retailer out immediately.
+- Accounts are stored in Supabase project **sardar-customers** (Mumbai). Visiting-card photos are in Cloudinary folder `sardar-cards`.
+
+**One-time setup:** Netlify → Environment variables → add `SUPABASE_SERVICE_KEY` (Supabase → project *sardar-customers* → Project Settings → API Keys → **Secret key**; tick "Contains secret values"), then Trigger deploy. Until it's set, the site shows every design to everyone and the Login button is hidden.
+
+## What's on the site
+- Hero: latest Instagram **product** reels (posts whose caption names a collection). Greetings/promos are never shown.
+- Collections: only collections that have designs, plus a "More on request" card.
+- All designs: one feed with collection, type and purity filters.
