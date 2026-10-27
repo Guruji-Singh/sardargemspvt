@@ -1,8 +1,8 @@
-// Runs on Netlify at every deploy. Scans the media/ folder and writes media.json,
-// which the website reads to show your own photos and videos.
+// Runs on Netlify at every deploy. Scans the media/ folder and writes netlify/lib/media-list.mjs,
+// which the feed function uses (so guests only see the first designs of each category).
 //
 //   media/nose-pins/anything.jpg   -> shows under "Nose Pins"
-//   media/latest/anything.mp4      -> shows only in "Latest designs"
+//   media/latest/anything.mp4      -> shows under "Other Designs"
 //
 // Newest files first: name files so they sort that way (e.g. 2026-10-27-ring.jpg), or
 // leave them; files are ordered by name, Z→A / newest date first.
@@ -45,5 +45,5 @@ if (existsSync(ROOT)) {
   }
 }
 
-writeFileSync("media.json", JSON.stringify({ items }, null, 1));
-console.log(`media.json: ${items.length} file(s)`);
+writeFileSync("netlify/lib/media-list.mjs", "// Generated at deploy by scripts/build-media.mjs — do not edit.\nexport default " + JSON.stringify(items, null, 1) + ";\n");
+console.log(`media-list: ${items.length} file(s)`);
