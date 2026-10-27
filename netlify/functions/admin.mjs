@@ -1,14 +1,16 @@
 // Admin actions for the upload page. Every request must carry the admin password.
 //   POST /api/admin  { action: "check" }                                  -> verifies password
-//   POST /api/admin  { action: "sign", cat, code }                        -> signature for a direct upload to Cloudinary
+//   POST /api/admin  { action: "sign", cat, code, purity:[...] }          -> signature for a direct upload to Cloudinary
 //   POST /api/admin  { action: "delete", publicId, resourceType }         -> deletes an upload
-//   POST /api/admin  { action: "rename", publicId, resourceType, code }   -> changes the product code
+//   POST /api/admin  { action: "rename", publicId, resourceType, code, purity:[...] } -> changes code / purity
 // Needs Netlify env vars: ADMIN_PASSWORD, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
 
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const TAG = "sardar";
 const SLUG = /^[a-z0-9-]{1,40}$/;
+const PURITIES = ["14K", "16K", "18K", "20K", "22K"];
+const purityOf = arr => (Array.isArray(arr) ? arr : []).map(x => String(x).toUpperCase()).filter(x => PURITIES.includes(x)).filter((x, i, a) => a.indexOf(x) === i).join(",");
 
 const sha1 = s => createHash("sha1").update(s).digest("hex");
 const sign = (params, secret) =>
@@ -43,7 +45,7 @@ export default async (req) => {
     const cat = String(body.cat || "");
     if (!SLUG.test(cat)) return Response.json({ error: "Bad category" }, { status: 400 });
     const params = {
-      context: `code=${clean(body.code)}|cat=${cat}`,
+      context: `code=${clean(body.code)}|cat=${cat}|purity=${purityOf(body.purity)}`,
       folder: `sardar/${cat}`,
       tags: TAG,
       timestamp
@@ -63,7 +65,7 @@ export default async (req) => {
     } else {
       endpoint = "explicit";
       const cat = publicId.split("/")[1] || "";
-      params = { context: `code=${clean(body.code)}|cat=${cat}`, public_id: publicId, type: "upload", timestamp };
+      params = { context: `code=${clean(body.code)}|cat=${cat}|purity=${purityOf(body.purity)}`, public_id: publicId, type: "upload", timestamp };
     }
     const form = new URLSearchParams({ ...params, api_key: key, signature: sign(params, secret) });
     const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/${type}/${endpoint}`, { method: "POST", body: form });
