@@ -1,5 +1,7 @@
-// Admin actions for the upload page. Every request must carry the admin password (header x-admin-password).
-//   { action:"check" }                                           -> verifies password
+// Admin actions for the upload page.
+//   { action:"login" }  with header x-admin-password             -> returns a login token (valid 12 hours)
+//   Every other request must carry that token (header x-admin-token).
+//   { action:"check" }                                           -> verifies the token
 //   { action:"list" }                                            -> all product uploads
 //   { action:"sign", cat, code, purity:[...] }                   -> signature for a direct upload to Cloudinary
 //   { action:"delete", publicId, resourceType }                  -> deletes an upload
@@ -9,10 +11,11 @@
 //   { action:"reset-password", id, password }                    -> sets a new password for a retailer
 // Needs Netlify env vars: ADMIN_PASSWORD, CLOUDINARY_*, SUPABASE_SERVICE_KEY (for customers)
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { TAG, cloudEnv, signParams, listProducts } from "../lib/cloud.mjs";
 import { db, accountsReady, hashPassword } from "../lib/auth.mjs";
 import { PURITIES } from "../lib/catalog.mjs";
+import { RULES, clientIp, lockedFor, recordFail, clearFails, lockedMsg } from "../lib/limit.mjs";
 
 const SLUG = /^[a-z0-9-]{1,40}$/;
 const purityOf = arr => (Array.isArray(arr) ? arr : []).map(x => String(x).toUpperCase()).filter(x => PURITIES.includes(x)).filter((x, i, a) => a.indexOf(x) === i).join(",");
@@ -26,16 +29,42 @@ function passwordOk(given) {
   return timingSafeEqual(Buffer.from(sha1(given)), Buffer.from(sha1(real)));
 }
 
+/* Admin login token: signed, expires in 12 hours. Changing ADMIN_PASSWORD in Netlify logs everyone out. */
+const TOKEN_HOURS = 12;
+const tokenKey = () => createHash("sha256").update("sjh-admin|" + (process.env.ADMIN_PASSWORD || "") + "|" + (process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_KEY || "")).digest();
+function makeAdminToken() {
+  const payload = Buffer.from(JSON.stringify({ a: 1, exp: Date.now() + TOKEN_HOURS * 3600e3 })).toString("base64url");
+  return `${payload}.${createHmac("sha256", tokenKey()).update(payload).digest("base64url")}`;
+}
+function tokenOk(token) {
+  if (!token || !token.includes(".")) return false;
+  const [payload, sig] = token.split(".");
+  const want = createHmac("sha256", tokenKey()).update(payload).digest("base64url");
+  if (sig.length !== want.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return false;
+  try { return JSON.parse(Buffer.from(payload, "base64url").toString()).exp > Date.now(); } catch { return false; }
+}
+
 export default async (req) => {
   if (req.method !== "POST") return out({ error: "POST only" }, 405);
   const env = cloudEnv();
   if (!env || !process.env.ADMIN_PASSWORD)
     return out({ error: "Server not configured (Cloudinary keys / ADMIN_PASSWORD missing in Netlify)" }, 500);
-  if (!passwordOk(req.headers.get("x-admin-password"))) {
-    await new Promise(r => setTimeout(r, 800));
-    return out({ error: "Wrong password" }, 401);
-  }
   let body = {}; try { body = await req.json(); } catch {}
+
+  if (body.action === "login") {
+    const ip = "admin-ip:" + clientIp(req);
+    const mins = await lockedFor([ip, "admin-all"]);
+    if (mins) return out({ error: lockedMsg(mins) }, 429);
+    if (!passwordOk(req.headers.get("x-admin-password"))) {
+      await recordFail([[ip, RULES.adminIp], ["admin-all", RULES.adminAll]]);
+      await new Promise(r => setTimeout(r, 800));
+      return out({ error: "Wrong password" }, 401);
+    }
+    await clearFails([ip]);
+    return out({ token: makeAdminToken(), hours: TOKEN_HOURS });
+  }
+
+  if (!tokenOk(req.headers.get("x-admin-token"))) return out({ error: "Please log in again" }, 401);
   const timestamp = Math.floor(Date.now() / 1000);
 
   switch (body.action) {
