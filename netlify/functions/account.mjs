@@ -11,6 +11,7 @@
 
 import { db, accountsReady, hashPassword, checkPassword, makeToken, viewerFrom, normPhone, validGstin, GST_STATES } from "../lib/auth.mjs";
 import { uploadCard } from "../lib/cloud.mjs";
+import { RULES, clientIp, lockedFor, recordFail, clearFails, lockedMsg } from "../lib/limit.mjs";
 
 const STATES = [...new Set(Object.values(GST_STATES))];
 const txt = (s, n = 80) => String(s || "").replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, n);
@@ -37,9 +38,17 @@ export default async (req) => {
   if (!phone) return out({ error: "Enter a valid 10-digit mobile number." }, 400);
 
   if (b.action === "login") {
+    const kPhone = "phone:" + phone, kIp = "ip:" + clientIp(req);
+    const mins = await lockedFor([kPhone, kIp]);
+    if (mins) return out({ error: lockedMsg(mins) }, 429);
     const rows = await db(`customers?phone=eq.${phone}&select=*`);
     const u = rows[0];
-    if (!u || !checkPassword(b.password, u.pass_hash)) { await sleep(700); return out({ error: "Wrong mobile number or password." }, 401); }
+    if (!u || !checkPassword(b.password, u.pass_hash)) {
+      await recordFail([[kPhone, RULES.phone], [kIp, RULES.ip]]);
+      await sleep(700);
+      return out({ error: "Wrong mobile number or password." }, 401);
+    }
+    await clearFails([kPhone]);
     if (u.status === "rejected" || u.status === "blocked") return out({ error: "This account is not active. Please WhatsApp us." }, 403);
     await db(`customers?id=eq.${u.id}`, { method: "PATCH", body: { last_login: new Date().toISOString(), login_count: (u.login_count || 0) + 1 } });
     return out({ token: makeToken(u), user: publicUser(u) });
@@ -59,6 +68,11 @@ export default async (req) => {
     }
     const card = typeof b.card === "string" && b.card.startsWith("data:image/") ? b.card : null;
     if (card && card.length > 4_000_000) return out({ error: "Visiting card photo is too large." }, 400);
+
+    const kReg = "reg-ip:" + clientIp(req);
+    const regMins = await lockedFor([kReg]);
+    if (regMins) return out({ error: lockedMsg(regMins) }, 429);
+    await recordFail([[kReg, { max: 10, window: 60 * 60, lock: 60 * 60 }]]);   // max 10 sign-up tries per hour per IP
 
     const existing = await db(`customers?phone=eq.${phone}&select=id`);
     if (existing.length) return out({ error: "This mobile number is already registered. Please log in." }, 409);

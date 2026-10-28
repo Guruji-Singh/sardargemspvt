@@ -169,12 +169,13 @@ const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;
 const store = { get(k){ try{return localStorage.getItem(k)}catch(e){return null} }, set(k,v){ try{localStorage.setItem(k,v)}catch(e){} }, del(k){ try{localStorage.removeItem(k)}catch(e){} } };
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),2200); }
 
-let PW = store.get('sjh_pw') || '';
+store.del('sjh_pw');      // old versions saved the password itself — remove it
+let TOK = store.get('sjh_admin_tok') || '';
 let LIB = [];            // uploaded items
 let pending = {};        // per-category numbers reserved by files still uploading
 
 async function api(body){
-  const r = await fetch('/api/admin', { method:'POST', headers:{'Content-Type':'application/json','x-admin-password':PW}, body:JSON.stringify(body) });
+  const r = await fetch('/api/admin', { method:'POST', headers:{'Content-Type':'application/json','x-admin-token':TOK}, body:JSON.stringify(body) });
   const j = await r.json().catch(()=>({error:'Server error'}));
   if (!r.ok) throw Object.assign(new Error(j.error || r.status), {status:r.status});
   return j;
@@ -182,22 +183,27 @@ async function api(body){
 
 /* ---------- login ---------- */
 async function login(pw){
-  PW = pw; $('loginErr').textContent = '';
+  $('loginErr').textContent = '';
   try{
+    if (pw) {
+      const r = await fetch('/api/admin', { method:'POST', headers:{'Content-Type':'application/json','x-admin-password':pw}, body:JSON.stringify({action:'login'}) });
+      const j = await r.json().catch(()=>({error:'Server error'}));
+      if (!r.ok) throw new Error(j.error || r.status);
+      TOK = j.token; store.set('sjh_admin_tok', TOK); $('pw').value = '';
+    }
     await api({action:'check'});
-    store.set('sjh_pw', pw);
     $('login').hidden = true; $('app').hidden = false; $('logout').hidden = false;
     loadCustomers();
     loadLib();
   }catch(e){
-    store.del('sjh_pw'); PW = '';
+    store.del('sjh_admin_tok'); TOK = '';
     $('login').hidden = false; $('app').hidden = true;
     $('loginErr').textContent = e.message;
   }
 }
 $('loginBtn').onclick = () => login($('pw').value.trim());
 $('pw').addEventListener('keydown', e => { if (e.key==='Enter') $('loginBtn').click(); });
-$('logout').onclick = () => { store.del('sjh_pw'); location.reload(); };
+$('logout').onclick = () => { store.del('sjh_admin_tok'); location.reload(); };
 
 /* ---------- categories + codes ---------- */
 $('cat').innerHTML = CATS.map(c=>`<option value="${slug(c)}">${c}</option>`).join('');
@@ -283,7 +289,7 @@ async function upload(file, cat, code, num, purity){
     });
   }catch(e){
     st.textContent = e.message; st.className = 'st bad';
-    if (e.status === 401) { store.del('sjh_pw'); setTimeout(()=>location.reload(), 1500); }
+    if (e.status === 401) { store.del('sjh_admin_tok'); setTimeout(()=>location.reload(), 1500); }
   }finally{ done(); }
 }
 
@@ -409,7 +415,7 @@ $('cList').addEventListener('click', async e => {
 });
 
 /* auto-login if password saved on this phone */
-if (PW) login(PW); else suggest();
+if (TOK) login(); else suggest();
 </script>
 </body>
 </html>
