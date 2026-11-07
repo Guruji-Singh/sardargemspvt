@@ -112,7 +112,7 @@ export default async (req) => {
 
     case "cat-list": return out({ catalogues: await listCatalogues() });
 
-    case "cat-tiles": return out({ tiles: await listTiles(String(body.slug || "")) });
+    case "cat-tiles": return out({ tiles: await listTiles(await getCatalogue(String(body.slug || ""))) });
 
     case "cat-sign": {
       const slug = String(body.slug || "");
@@ -120,16 +120,19 @@ export default async (req) => {
       const kind = String(body.kind || "");
       if (kind === "supplier") {
         if (await getCatalogue(slug)) return out({ error: "A catalogue with this name already exists" }, 409);
-        const meta = { name: body.name, slug, prefix: body.prefix, sprefix: body.sprefix, status: "draft", count: body.count };
-        return out(signUpload({ resourceType: "raw", authenticated: true, publicId: `catalogues/${slug}/supplier-${rand()}.dat`, tags: TAGS.cat, context: catalogueContext(meta) }));
+        const dir = `${slug}-${rand()}`;
+        const meta = { name: body.name, slug, dir, prefix: body.prefix, sprefix: body.sprefix, status: "draft", count: body.count };
+        return out({ dir, ...signUpload({ resourceType: "raw", authenticated: true, publicId: `catalogues/${dir}/supplier-${rand()}.dat`, tags: TAGS.cat, context: catalogueContext(meta) }) });
       }
+      const dir = String(body.dir || "");
+      if (!dir.startsWith(slug + "-") || !/^[a-z0-9-]{3,60}$/.test(dir)) return out({ error: "Bad catalogue folder" }, 400);
       if (kind === "tile") {
         const n = Number(body.n) || 0;
         const t = { cat: slug, code: body.code, orig: body.orig, page: body.page, n };
-        return out(signUpload({ resourceType: "image", publicId: `catalogues/${slug}/${String(n).padStart(3, "0")}-${rand()}`, tags: TAGS.tile, context: tileContext(t) }));
+        return out(signUpload({ resourceType: "image", publicId: `catalogues/${dir}/${String(n).padStart(3, "0")}-${rand()}`, tags: TAGS.tile, context: tileContext(t) }));
       }
       if (kind === "branded" || kind === "preview")
-        return out(signUpload({ resourceType: "raw", authenticated: true, publicId: `catalogues/${slug}/${kind}-${rand()}.dat`, tags: TAGS.pdf, context: `cat=${slug}|kind=${kind}` }));
+        return out(signUpload({ resourceType: "raw", authenticated: true, publicId: `catalogues/${dir}/${kind}-${rand()}.dat`, tags: TAGS.pdf, context: `cat=${slug}|kind=${kind}` }));
       return out({ error: "Bad kind" }, 400);
     }
 
@@ -138,7 +141,7 @@ export default async (req) => {
       if (!cat) return out({ error: "Catalogue not found" }, 404);
       const next = { ...cat };
       for (const k of ["name", "status", "count", "branded", "preview"]) if (body[k] !== undefined) next[k] = body[k];
-      for (const k of ["branded", "preview"]) if (next[k] && !String(next[k]).startsWith(`catalogues/${cat.slug}/`)) return out({ error: "Bad file" }, 400);
+      for (const k of ["branded", "preview"]) if (next[k] && !String(next[k]).startsWith(`catalogues/${cat.dir}/`)) return out({ error: "Bad file" }, 400);
       await setContext({ resourceType: "raw", type: "authenticated", publicId: cat.supplier, context: catalogueContext(next) });
       return out({ ok: true, catalogue: next });
     }
@@ -146,8 +149,9 @@ export default async (req) => {
     case "tile-save":
     case "tile-delete": {
       const publicId = String(body.publicId || "");
-      const cat = publicId.split("/")[1] || "";
-      if (!publicId.startsWith("catalogues/") || !CAT_SLUG.test(cat)) return out({ error: "Not allowed" }, 400);
+      const dir = publicId.split("/")[1] || "";
+      if (!publicId.startsWith("catalogues/") || !/^[a-z0-9-]{1,60}$/.test(dir)) return out({ error: "Not allowed" }, 400);
+      const cat = String(body.cat || dir);
       if (body.action === "tile-delete") await destroy({ resourceType: "image", type: "upload", publicId });
       else await setContext({ resourceType: "image", type: "upload", publicId, context: tileContext({ ...body, cat }) });
       return out({ ok: true });
@@ -156,7 +160,7 @@ export default async (req) => {
     case "cat-delete": {
       const cat = await getCatalogue(String(body.slug || ""));
       if (!cat) return out({ error: "Catalogue not found" }, 404);
-      await deleteCatalogue(cat.slug);
+      await deleteCatalogue(cat);
       return out({ ok: true });
     }
 

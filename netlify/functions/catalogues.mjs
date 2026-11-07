@@ -10,12 +10,12 @@ const GUEST_DESIGNS = 4;
 const cache = { at: 0, data: [], info: {} };
 
 async function published() {
-  if (Date.now() - cache.at < 60e3) return cache.data;
+  if (Date.now() - cache.at < 180e3) return cache.data;     // 3 min: keeps Cloudinary API use low
   const every = await listCatalogues();
   const cats = every.filter(c => c.status === "published");
   cache.info = { stored: every.length, published: cats.length };
   const withTiles = await Promise.all(cats.map(async c => {
-    try { return { ...c, tiles: await listTiles(c.slug) }; }
+    try { return { ...c, tiles: await listTiles(c) }; }
     catch (e) { console.warn("catalogue tiles", c.slug, e.message); cache.info.tileError = e.message; return { ...c, tiles: [] }; }
   }));
   cache.at = Date.now(); cache.data = withTiles;
@@ -29,7 +29,7 @@ export default async (req) => {
   const [cats, viewer] = await Promise.all([published().catch(e => { console.warn("catalogues", e.message); problem = e.message; return []; }), viewerFrom(req)]);
   if (new URL(req.url).searchParams.get("debug") === "1") {
     const first = cache.data[0] || (await listCatalogues().catch(() => []))[0];
-    return Response.json({ slug: first && first.slug, ...(await debugTiles(first ? first.slug : "x")) });
+    return Response.json({ slug: first && first.slug, dir: first && first.dir, ...(await debugTiles(first ? first.dir : "x")) });
   }
   const full = !accountsReady() || !!(viewer && viewer.status === "approved");
   return Response.json({

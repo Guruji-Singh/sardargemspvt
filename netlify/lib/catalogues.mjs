@@ -1,6 +1,7 @@
 // Catalogues made from supplier PDFs (admin page → Catalogues tab).
 //
-// Everything is stored in Cloudinary, under catalogues/<slug>/:
+// Everything is stored in Cloudinary, under catalogues/<dir>/ (dir = slug + random part, so a deleted
+// catalogue's background clean-up can never touch a new one with the same name):
 //   supplier-<rand>.dat   the supplier's original PDF        raw, authenticated   tag sjh-catalogue
 //   branded-<rand>.dat    our branded PDF (all designs)      raw, authenticated   tag sjh-catalogue-pdf
 //   preview-<rand>.dat    our branded PDF, first 2 pages     raw, authenticated   tag sjh-catalogue-pdf
@@ -41,7 +42,7 @@ export async function search(expression, { max = 500, sort = [{ public_id: "asc"
 export function catalogueFromResource(r) {
   const c = ctxOf(r);
   return {
-    slug: c.slug, name: c.name || c.slug, prefix: c.prefix || "", sprefix: c.sprefix || "",
+    slug: c.slug, dir: c.dir || c.slug, name: c.name || c.slug, prefix: c.prefix || "", sprefix: c.sprefix || "",
     status: c.status === "published" ? "published" : "draft", count: Number(c.count || 0),
     supplier: r.public_id, branded: c.branded || "", preview: c.preview || "",
     bytes: r.bytes || 0, created: r.created_at
@@ -78,7 +79,7 @@ export async function debugTiles(slug) {
   const out = {};
   const safe = async (k, fn) => { try { out[k] = await fn(); } catch (e) { out[k] = "ERR " + e.message; } };
   await safe("prefixImages", async () => (await listByPrefix("image/upload", "catalogues/")).length);
-  await safe("prefixSlugImages", async () => (await listByPrefix("image/upload", `catalogues/${slug}/`)).length);
+  await safe("prefixSlugImages", async () => (await listByPrefix("image/upload", `catalogues/${slug}`)).length);
   await safe("tagSearch", async () => (await search(`tags=${TAGS.tile}`, { max: 5 })).map(r => `${r.resource_type}/${r.type}/${r.public_id}|${r.asset_folder || ""}`));
   await safe("recentImages", async () => (await search(`resource_type:image`, { max: 5, sort: [{ created_at: "desc" }] })).map(r => `${r.public_id}|${r.asset_folder || ""}|${(r.tags || []).join(",")}`));
   return out;
@@ -96,21 +97,18 @@ export async function getCatalogue(slug) {
   return (await listCatalogues()).find(c => c.slug === slug) || null;
 }
 
-export async function listTiles(slug) {
+/** Designs of one catalogue (pass the catalogue from listCatalogues/getCatalogue). */
+export async function listTiles(cat) {
   const env = cloudEnv();
-  if (!SLUG.test(slug)) return [];
+  if (!cat || !cat.dir) return [];
   const isTile = r => !r.tags || r.tags.includes(TAGS.tile);
   let rows = [], firstErr = null;
-  try { rows = (await listByPrefix("image/upload", `catalogues/${slug}/`)).filter(isTile); }
+  try { rows = (await listByPrefix("image/upload", `catalogues/${cat.dir}/`)).filter(isTile); }
   catch (e) { firstErr = e; }
-  if (!rows.length) {      // fall back to search (by tag + public_id, or by context)
-    try { rows = await search(`resource_type:image AND public_id:catalogues/${slug}/*`); }
-    catch (e) {
-      try { rows = await search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${slug}"`); }
-      catch (e2) { throw firstErr || e2; }
-    }
+  if (!rows.length) {
+    try { rows = await search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${cat.slug}"`); }
+    catch (e) { if (firstErr) throw firstErr; }
   }
-  if (!rows.length && firstErr) throw firstErr;
   return rows.map(r => tileFromResource(r, env.cloud)).sort((a, b) => (a.n - b.n) || a.publicId.localeCompare(b.publicId));
 }
 
@@ -164,10 +162,10 @@ export async function destroy({ resourceType, type, publicId }) {
 }
 
 /** Delete everything stored for one catalogue. */
-export async function deleteCatalogue(slug) {
+export async function deleteCatalogue(cat) {
   const env = cloudEnv();
-  if (!SLUG.test(slug)) throw new Error("Bad catalogue");
-  const prefix = encodeURIComponent(`catalogues/${slug}/`);
+  if (!cat || !cat.dir) throw new Error("Bad catalogue");
+  const prefix = encodeURIComponent(`catalogues/${cat.dir}/`);
   for (const path of ["image/upload", "raw/authenticated"]) {
     for (let i = 0; i < 5; i++) {
       const r = await fetch(`https://api.cloudinary.com/v1_1/${env.cloud}/resources/${path}?prefix=${prefix}&invalidate=true`, { method: "DELETE", headers: auth(env) });
@@ -179,7 +177,7 @@ export async function deleteCatalogue(slug) {
 }
 
 export const catalogueContext = c => [
-  `name=${cleanCtx(c.name)}`, `slug=${c.slug}`, `prefix=${cleanCtx(c.prefix)}`, `sprefix=${cleanCtx(c.sprefix)}`,
+  `name=${cleanCtx(c.name)}`, `slug=${c.slug}`, `dir=${cleanCtx(c.dir || c.slug)}`, `prefix=${cleanCtx(c.prefix)}`, `sprefix=${cleanCtx(c.sprefix)}`,
   `status=${c.status === "published" ? "published" : "draft"}`, `count=${Number(c.count) || 0}`,
   `branded=${cleanCtx(c.branded)}`, `preview=${cleanCtx(c.preview)}`
 ].join("|");

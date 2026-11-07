@@ -275,17 +275,21 @@ $('catSave').onclick = async () => {
     catStatus('Saving the supplier PDF…');
     const s1 = await api({ action:'cat-sign', kind:'supplier', slug, name, prefix, sprefix, count: kept.length });
     await cldUpload(s1, file, 'supplier.dat', p => catStatus(`Saving the supplier PDF… ${Math.round(p*100)}%`));
+    const dir = s1.dir;
     for (let i = 0; i < kept.length; i++) {
       const t = kept[i];
       catStatus(`Uploading designs… ${i+1} of ${kept.length}`);
-      const s = await api({ action:'cat-sign', kind:'tile', slug, n: t.n, code: t.code, orig: t.orig, page: t.page });
+      const s = await api({ action:'cat-sign', kind:'tile', slug, dir, n: t.n, code: t.code, orig: t.orig, page: t.page });
       await cldUpload(s, t.blob, `${t.code}.jpg`);
     }
     catStatus('Making the branded PDF…');
     const full = await makeBrandedPdf(name, kept), prev = await makeBrandedPdf(name, kept, true);
-    const sb = await api({ action:'cat-sign', kind:'branded', slug }); await cldUpload(sb, full, 'branded.dat', p => catStatus(`Saving the branded PDF… ${Math.round(p*100)}%`));
-    const sp = await api({ action:'cat-sign', kind:'preview', slug }); await cldUpload(sp, prev, 'preview.dat');
+    const sb = await api({ action:'cat-sign', kind:'branded', slug, dir }); await cldUpload(sb, full, 'branded.dat', p => catStatus(`Saving the branded PDF… ${Math.round(p*100)}%`));
+    const sp = await api({ action:'cat-sign', kind:'preview', slug, dir }); await cldUpload(sp, prev, 'preview.dat');
     await api({ action:'cat-save', slug, count: kept.length, branded: sb.public_id, preview: sp.public_id });
+    catStatus('Checking…');
+    const check = await api({ action:'cat-tiles', slug });
+    if ((check.tiles || []).length < kept.length) throw new Error(`Only ${(check.tiles||[]).length} of ${kept.length} designs were saved. Delete this catalogue and try again.`);
     catStatus('Saved. Check it below and tap Publish to show it on the website.', 'ok');
     toast('Catalogue saved');
     DRAFT = null; renderDraft(); $('catFile').value = ''; $('catFileName').textContent = ''; $('catName').value = ''; $('catSPrefix').value = ''; delete $('catPrefix').dataset.touched;
@@ -347,7 +351,7 @@ $('catList').addEventListener('click', async e => {
       list.hidden = false; list.innerHTML = '<div class="empty">Loading…</div>';
       const j = await api({ action:'cat-tiles', slug });
       list.innerHTML = `<div class="ctgrid">${(j.tiles||[]).map(t => `
-        <div class="ct" data-id="${esc(t.publicId)}" data-n="${t.n}" data-page="${t.page}" data-code="${esc(t.code)}">
+        <div class="ct" data-id="${esc(t.publicId)}" data-cat="${esc(slug)}" data-n="${t.n}" data-page="${t.page}" data-code="${esc(t.code)}">
           <img src="${esc(t.thumb)}" alt="" loading="lazy">
           <div class="ctb"><b>${esc(t.code)}</b><span class="pg">Page ${t.page}</span>
             <input type="text" value="${esc(t.orig)}" data-orig placeholder="Supplier code">
@@ -364,7 +368,7 @@ $('catList').addEventListener('click', async e => {
   b.disabled = true;
   try {
     if (b.dataset.t === 'save') {
-      await api({ action:'tile-save', publicId: t.dataset.id, code: t.dataset.code, orig: t.querySelector('[data-orig]').value, page: t.dataset.page, n: t.dataset.n });
+      await api({ action:'tile-save', publicId: t.dataset.id, cat: t.dataset.cat, code: t.dataset.code, orig: t.querySelector('[data-orig]').value, page: t.dataset.page, n: t.dataset.n });
       toast('Saved');
     } else {
       if (!confirm(`Remove ${t.dataset.code} from this catalogue? The PDFs are not changed.`)) return;
