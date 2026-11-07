@@ -12,18 +12,22 @@ const cache = { at: 0, data: [] };
 async function published() {
   if (Date.now() - cache.at < 60e3) return cache.data;
   const cats = (await listCatalogues()).filter(c => c.status === "published");
-  const withTiles = await Promise.all(cats.map(async c => ({ ...c, tiles: await listTiles(c.slug) })));
+  const withTiles = await Promise.all(cats.map(async c => {
+    try { return { ...c, tiles: await listTiles(c.slug) }; }
+    catch (e) { console.warn("catalogue tiles", c.slug, e.message); return { ...c, tiles: [] }; }
+  }));
   cache.at = Date.now(); cache.data = withTiles;
   return withTiles;
 }
 
 export default async (req) => {
   if (!cloudEnv()) return Response.json({ catalogues: [] });
-  const [cats, viewer] = await Promise.all([published().catch(e => { console.warn("catalogues", e.message); return []; }), viewerFrom(req)]);
+  let problem = "";
+  const [cats, viewer] = await Promise.all([published().catch(e => { console.warn("catalogues", e.message); problem = e.message; return []; }), viewerFrom(req)]);
   const full = !accountsReady() || !!(viewer && viewer.status === "approved");
   return Response.json({
-    full,
-    catalogues: cats.map(c => ({
+    full, ...(problem ? { problem } : {}),
+    catalogues: cats.filter(c => c.tiles.length).map(c => ({
       slug: c.slug, name: c.name, total: c.tiles.length,
       pdf: !!c.branded, preview: !!c.preview,
       cover: c.tiles[0] ? c.tiles[0].thumb : "",

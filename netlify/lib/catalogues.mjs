@@ -57,9 +57,27 @@ export function tileFromResource(r, cloud) {
   };
 }
 
+/** Lists stored files by public_id prefix (Admin API: up to date at once, unlike search). */
+async function listByPrefix(path, prefix) {
+  const env = cloudEnv();
+  if (!env) throw new Error("Cloudinary not configured");
+  const all = [];
+  let cursor = "";
+  for (let i = 0; i < 6; i++) {
+    const r = await fetch(`https://api.cloudinary.com/v1_1/${env.cloud}/resources/${path}?prefix=${encodeURIComponent(prefix)}&context=true&tags=true&max_results=500${cursor ? "&next_cursor=" + cursor : ""}`, { headers: auth(env) });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error?.message || `Cloudinary ${r.status}`);
+    all.push(...(j.resources || []));
+    if (!(cursor = j.next_cursor)) break;
+  }
+  return all;
+}
+
 export async function listCatalogues() {
-  return (await search(`resource_type:raw AND tags=${TAGS.cat}`, { sort: [{ created_at: "desc" }] }))
-    .map(catalogueFromResource).filter(c => c.slug && SLUG.test(c.slug));
+  return (await listByPrefix("raw/authenticated", "catalogues/"))
+    .filter(r => (r.tags || []).includes(TAGS.cat))
+    .map(catalogueFromResource).filter(c => c.slug && SLUG.test(c.slug))
+    .sort((a, b) => String(b.created).localeCompare(String(a.created)));
 }
 
 export async function getCatalogue(slug) {
@@ -70,8 +88,8 @@ export async function getCatalogue(slug) {
 export async function listTiles(slug) {
   const env = cloudEnv();
   if (!SLUG.test(slug)) return [];
-  const rows = await search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${slug}"`);
-  return rows.map(r => tileFromResource(r, env.cloud)).sort((a, b) => a.n - b.n);
+  const rows = await listByPrefix("image/upload", `catalogues/${slug}/`);
+  return rows.filter(r => (r.tags || []).includes(TAGS.tile)).map(r => tileFromResource(r, env.cloud)).sort((a, b) => a.n - b.n);
 }
 
 /** Tiles whose code is in `codes` (up to 60 at a time). */
