@@ -74,17 +74,6 @@ async function listByPrefix(path, prefix) {
   return all;
 }
 
-/** Temporary diagnostics: what Cloudinary holds for catalogues (counts and a few ids only). */
-export async function debugTiles(slug) {
-  const out = {};
-  const safe = async (k, fn) => { try { out[k] = await fn(); } catch (e) { out[k] = "ERR " + e.message; } };
-  await safe("prefixImages", async () => (await listByPrefix("image/upload", "catalogues/")).length);
-  await safe("prefixSlugImages", async () => (await listByPrefix("image/upload", `catalogues/${slug}`)).length);
-  await safe("tagSearch", async () => (await search(`tags=${TAGS.tile}`, { max: 5 })).map(r => `${r.resource_type}/${r.type}/${r.public_id}|${r.asset_folder || ""}`));
-  await safe("recentImages", async () => (await search(`resource_type:image`, { max: 5, sort: [{ created_at: "desc" }] })).map(r => `${r.public_id}|${r.asset_folder || ""}|${(r.tags || []).join(",")}`));
-  return out;
-}
-
 export async function listCatalogues() {
   return (await listByPrefix("raw/authenticated", "catalogues/"))
     .filter(r => (r.tags || []).includes(TAGS.cat))
