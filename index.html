@@ -190,6 +190,13 @@
 
   /* Trust */
   #trust{padding:56px 0 24px}
+  .cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px}
+  .cat{display:flex;gap:16px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
+  .cat img{width:96px;height:96px;object-fit:contain;border-radius:10px;background:#fff;flex:none;border:1px solid var(--line)}
+  .cat h3{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:22px;line-height:1.15}
+  .cat .kts{font-size:12px;color:var(--muted);margin:2px 0 10px}
+  .cat .acts{display:flex;gap:8px;flex-wrap:wrap}
+  .cat .btn{padding:9px 16px;font-size:13px}
   .trust{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .trust-item{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px}
   .trust-item .ic{flex:none;width:38px;height:38px;border-radius:50%;background:var(--cream);display:grid;place-items:center;color:var(--maroon)}
@@ -350,6 +357,28 @@
   </div>
 </section>
 
+<section id="catalogues">
+  <div class="wrap">
+    <div class="head">
+      <div><div class="eyebrow">Download &amp; share</div><h2>Catalogues</h2></div>
+      <p>Open a catalogue, pick the design code you like, and send it to us on WhatsApp for weight and rates.</p>
+    </div>
+    <div class="cats">
+      <div class="cat">
+        <img src="catalogues/drop-earrings-cover.jpg" alt="Drop earrings catalogue" loading="lazy">
+        <div>
+          <h3>Drop Earrings</h3>
+          <div class="kts">18K Gold · 50 designs · PDF</div>
+          <div class="acts">
+            <a class="btn btn-gold" href="catalogues/sardar-gems-drop-earrings.pdf" target="_blank" rel="noopener">View catalogue</a>
+            <a class="btn btn-line" data-cat-share="Drop Earrings|catalogues/sardar-gems-drop-earrings.pdf" target="_blank" rel="noopener">Share</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="about">
   <div class="wrap about">
     <div>
@@ -395,7 +424,7 @@
   <div class="wrap">
     <div class="foot-brand"><span class="mark"><svg viewBox="0 0 46.41 47.82"><use href="#sjh" width="46.41" height="47.82"/></svg></span>
       <div><b style="color:var(--ink)">Sardar Jewellery House</b> — a unit of Sardar Gems<br>Amritsar, Punjab 143001
-        <div class="foot-links"><a href="#collections">Collections</a><a data-group target="_blank" rel="noopener" hidden>WhatsApp Group</a><a id="igFoot" target="_blank" rel="noopener">Instagram</a><a id="footAcct">Retailer login</a></div></div></div>
+        <div class="foot-links"><a href="#collections">Collections</a><a href="#catalogues">Catalogues</a><a data-group target="_blank" rel="noopener" hidden>WhatsApp Group</a><a id="igFoot" target="_blank" rel="noopener">Instagram</a><a id="footAcct">Retailer login</a></div></div></div>
     <div>© <span id="yr"></span> Sardar Gems. Wholesale only.</div>
   </div>
 </footer>
@@ -520,6 +549,7 @@ $('mCall').href = $('callLink').href = 'tel:+' + CONFIG.whatsappNumber; $('callL
 $('mapLink').href = CONFIG.mapsUrl;
 $('gstLine').textContent = CONFIG.gstin ? ' · GSTIN ' + CONFIG.gstin : '';
 $('forgot').href = waLink('Hi, I forgot my password for sardargems.com. My mobile number: ');
+document.querySelectorAll('[data-cat-share]').forEach(a=>{ const [name,path]=a.dataset.catShare.split('|'); const url=new URL(path,location.origin+'/').href; a.href='https://wa.me/?text='+encodeURIComponent('Sardar Gems – '+name+' catalogue: '+url); });
 if (CONFIG.whatsappGroup){ document.querySelectorAll('[data-group]').forEach(a=>{ a.href = CONFIG.whatsappGroup; a.hidden = false; }); $('mGroup').href = CONFIG.whatsappGroup; }
 else $('mbar').classList.add('no-group');
 $('stateSel').innerHTML = '<option value="">Select…</option>' + STATES.map(s=>`<option>${s}</option>`).join('');
