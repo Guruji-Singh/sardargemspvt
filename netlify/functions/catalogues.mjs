@@ -3,7 +3,7 @@
 // Supplier codes are never sent to the website.
 
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
-import { listCatalogues, listTiles } from "../lib/catalogues.mjs";
+import { listCatalogues, listTiles, debugTiles } from "../lib/catalogues.mjs";
 import { cloudEnv } from "../lib/cloud.mjs";
 
 const GUEST_DESIGNS = 4;
@@ -27,6 +27,10 @@ export default async (req) => {
   if (!cloudEnv()) return Response.json({ catalogues: [] });
   let problem = "";
   const [cats, viewer] = await Promise.all([published().catch(e => { console.warn("catalogues", e.message); problem = e.message; return []; }), viewerFrom(req)]);
+  if (new URL(req.url).searchParams.get("debug") === "1") {
+    const first = cache.data[0] || (await listCatalogues().catch(() => []))[0];
+    return Response.json({ slug: first && first.slug, ...(await debugTiles(first ? first.slug : "x")) });
+  }
   const full = !accountsReady() || !!(viewer && viewer.status === "approved");
   return Response.json({
     full, ...(problem ? { problem } : {}), info: cache.info,
