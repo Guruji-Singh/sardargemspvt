@@ -197,7 +197,30 @@
   .cat .kts{font-size:12px;color:var(--muted);margin:2px 0 10px}
   .cat .acts{display:flex;gap:8px;flex-wrap:wrap}
   .cat .btn{padding:9px 16px;font-size:13px}
-  .cat-note{font-size:12px;color:var(--muted);margin-top:10px}.cat-note a{color:var(--maroon);font-weight:600;cursor:pointer;text-decoration:underline}
+  .cat-note{font-size:12px;color:var(--muted);margin-top:10px}
+  .mylist{display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .mylist.on{display:flex}.mylist b{color:var(--maroon)}
+  .pick{position:fixed;inset:0;z-index:50;background:var(--ivory);overflow-y:auto;display:none}
+  .pick.open{display:block}
+  .pick-top{position:sticky;top:0;z-index:2;background:rgba(251,247,240,.97);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .pick-top h3{font-family:"Cormorant Garamond",serif;font-size:24px;font-weight:600;line-height:1.1}
+  .pick-top .x{background:none;border:0;font-size:30px;line-height:1;cursor:pointer;color:var(--ink);padding:0 4px}
+  .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(160px,45%),1fr));gap:12px;padding:16px 16px 120px;max-width:1100px;margin:0 auto}
+  .pt{background:#fff;border:1.5px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .pt.sel{border-color:var(--gold);box-shadow:0 0 0 2px rgba(184,137,59,.25)}
+  .pt img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;cursor:zoom-in;display:block}
+  .pt .pc{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+  .pt .pc b{font-size:12.5px;color:var(--maroon);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .pt .add{border:0;background:var(--maroon);color:#fff;border-radius:9px;height:34px;padding:0 14px;font-weight:600;font-size:13px;cursor:pointer}
+  .qty{display:flex;align-items:center;gap:4px}
+  .qty{flex:none}.qty button{width:28px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:17px;font-weight:600;cursor:pointer;color:var(--maroon)}
+  .qty span{min-width:20px;text-align:center;font-weight:700}
+  .pick-lock{grid-column:1/-1;background:#fff;border:1px dashed var(--gold);border-radius:14px;padding:16px;text-align:center}
+  .pick-lock p{color:var(--muted);font-size:14px;margin:6px 0 10px}
+  .pick-bar{position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--maroon);color:#fff;padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:none;align-items:center;justify-content:space-between;gap:12px}
+  .pick.open ~ .pick-bar.on{display:flex}
+  .pick-bar .wa{background:var(--wa);color:#fff;border:0;border-radius:12px;height:46px;padding:0 18px;font-weight:700;font-size:15px;cursor:pointer;white-space:nowrap}
+  .pick-bar .clr{background:none;border:0;color:#f4e6cf;text-decoration:underline;font-size:13px;cursor:pointer}.cat-note a{color:var(--maroon);font-weight:600;cursor:pointer;text-decoration:underline}
   .trust{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .trust-item{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px}
   .trust-item .ic{flex:none;width:38px;height:38px;border-radius:50%;background:var(--cream);display:grid;place-items:center;color:var(--maroon)}
@@ -378,8 +401,14 @@
         </div>
       </div>
     </div>
+    <div class="mylist" id="myList"><span>Your list: <b id="myListN">0 designs</b></span><span style="display:flex;gap:8px"><button class="btn btn-line" id="myListClear" type="button">Clear</button><button class="btn btn-gold" id="myListSend" type="button">Send on WhatsApp</button></span></div>
   </div>
 </section>
+<div class="pick" id="pick" aria-hidden="true">
+  <div class="pick-top"><div><h3 id="pickTitle"></h3><div class="cat-note" id="pickSub" style="margin:2px 0 0"></div></div><button class="x" id="pickClose" aria-label="Close">&times;</button></div>
+  <div class="pick-grid" id="pickGrid"></div>
+</div>
+<div class="pick-bar" id="pickBar"><span><b id="pickN">0</b> selected<br><button class="clr" id="pickClear" type="button">Clear list</button></span><button class="wa" id="pickSend" type="button">Send list on WhatsApp</button></div>
 
 <section id="about">
   <div class="wrap about">
@@ -551,10 +580,12 @@ $('mCall').href = $('callLink').href = 'tel:+' + CONFIG.whatsappNumber; $('callL
 $('mapLink').href = CONFIG.mapsUrl;
 $('gstLine').textContent = CONFIG.gstin ? ' · GSTIN ' + CONFIG.gstin : '';
 $('forgot').href = waLink('Hi, I forgot my password for sardargems.com. My mobile number: ');
-document.querySelectorAll('[data-cat-share]').forEach(a=>{ a.href='https://wa.me/?text='+encodeURIComponent('Sardar Gems – '+a.dataset.catShare+' catalogue: '+location.origin+'/#catalogues'); });
-document.querySelectorAll('[data-cat-reg]').forEach(a=> a.onclick = () => openAuth('register'));
-document.querySelectorAll('[data-cat-view]').forEach(a=> a.onclick = async e => {
-  if (!(FEED && FEED.viewer && FEED.viewer.status === 'approved')) return;      // guests: plain link to the 2-page preview
+const shareCat = name => 'https://wa.me/?text='+encodeURIComponent('Sardar Gems – '+name+' catalogue: '+location.origin+'/#catalogues');
+document.querySelectorAll('[data-cat-share]').forEach(a=> a.href = shareCat(a.dataset.catShare));
+document.addEventListener('click', e => { const a = e.target.closest('[data-cat-reg]'); if (a) { closePick(); openAuth('register'); } });
+document.addEventListener('click', async e => {
+  const a = e.target.closest('[data-cat-view]'); if (!a) return;
+  if (!(FEED && FEED.viewer && FEED.viewer.status === 'approved')) return;      // guests: plain link to the preview
   e.preventDefault();
   const w = window.open('', '_blank');
   let go = a.getAttribute('href');
@@ -564,9 +595,82 @@ document.querySelectorAll('[data-cat-view]').forEach(a=> a.onclick = async e => 
   } catch(err) {}
   if (w) w.location = go; else location.href = go;
 });
+
+/* ---------- catalogue picker: choose designs, send the list on WhatsApp ---------- */
+let CATALOGS = [], pickCat = null;
+const SEL = (() => { try { return JSON.parse(store.get('sjh_list') || '{}') || {}; } catch(e) { return {}; } })();   // code -> {q, cat}
+const saveSel = () => { store.set('sjh_list', JSON.stringify(SEL)); renderSel(); };
+const selCount = () => Object.keys(SEL).length;
+function renderSel(){
+  const n = selCount(), label = n + ' design' + (n===1?'':'s');
+  $('myList').classList.toggle('on', n > 0); $('myListN').textContent = label;
+  $('pickN').textContent = label; $('pickBar').classList.toggle('on', n > 0);
+}
+function listMessage(){
+  const groups = {};
+  Object.entries(SEL).forEach(([code, v]) => (groups[v.cat] = groups[v.cat] || []).push(`${code} ×${v.q}`));
+  const v = FEED && FEED.viewer;
+  return `Hi Sardar Jewellery House, I'd like these designs:\n\n` +
+    Object.entries(groups).map(([cat, lines]) => `*${cat}*\n${lines.join('\n')}`).join('\n\n') +
+    `\n\n` + (v ? `Name: ${v.name || ''}\nShop: ${v.shop || ''}` : `Shop name: \nCity: `);
+}
+function sendList(){ if (!selCount()) return; window.open(waLink(listMessage()), '_blank'); }
+function clearList(){ if (!confirm('Clear your list?')) return; Object.keys(SEL).forEach(k => delete SEL[k]); saveSel(); pickCat && renderPick(); }
+$('myListSend').onclick = $('pickSend').onclick = sendList;
+$('myListClear').onclick = $('pickClear').onclick = clearList;
+
+async function loadCatalogues(){
+  try {
+    const r = await fetch('/api/catalogues', { headers: TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {} });
+    const j = await r.json(); CATALOGS = j.catalogues || [];
+  } catch(e) { CATALOGS = []; }
+  const box = document.querySelector('#catalogues .cats');
+  box.querySelectorAll('.cat[data-dyn]').forEach(x => x.remove());
+  CATALOGS.forEach(c => {
+    const el = document.createElement('div'); el.className = 'cat'; el.dataset.dyn = c.slug;
+    const pdf = c.pdf ? `<a class="btn btn-line" data-cat-view="${esc(c.slug)}" href="${c.preview ? '/api/catalogue?preview=' + encodeURIComponent(c.slug) : '#catalogues'}" target="_blank" rel="noopener">PDF</a>` : '';
+    el.innerHTML = `<img src="${esc(c.cover)}" alt="${esc(c.name)} catalogue" loading="lazy">
+      <div><h3>${esc(c.name)}</h3><div class="kts">${c.total} designs · tap to choose</div>
+      <div class="acts"><button class="btn btn-gold" type="button" data-pick="${esc(c.slug)}">Choose designs</button>${pdf}<a class="btn btn-line" href="${shareCat(c.name)}" target="_blank" rel="noopener">Share</a></div></div>`;
+    box.appendChild(el);
+  });
+  renderSel();
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) openPick(b.dataset.pick); });
+
+function openPick(slug){
+  pickCat = CATALOGS.find(c => c.slug === slug); if (!pickCat) return;
+  renderPick();
+  $('pick').classList.add('open'); $('pick').setAttribute('aria-hidden','false'); document.body.classList.add('locked');
+  history.pushState({ pick: 1 }, '');
+}
+function hidePick(){ $('pick').classList.remove('open'); $('pick').setAttribute('aria-hidden','true'); pickCat = null; if (!panelCat) document.body.classList.remove('locked'); }
+function closePick(){ if (!$('pick').classList.contains('open')) return; if (history.state && history.state.pick) history.back(); else hidePick(); }
+window.addEventListener('popstate', e => { if ($('pick').classList.contains('open') && !(e.state && e.state.pick)) hidePick(); });
+$('pickClose').onclick = closePick;
+
+function renderPick(){
+  const c = pickCat, hidden = c.total - c.designs.length;
+  $('pickTitle').textContent = c.name;
+  $('pickSub').textContent = `${c.total} designs · tap Add on the ones you like, then send the list`;
+  $('pickGrid').innerHTML = c.designs.map((d, i) => {
+    const s = SEL[d.code];
+    return `<div class="pt ${s ? 'sel' : ''}" data-code="${esc(d.code)}"><img src="${esc(d.thumb)}" alt="${esc(d.code)}" loading="lazy" data-zoom="${i}">
+      <div class="pc"><b>${esc(d.code)}</b>${s ? `<span class="qty"><button type="button" data-q="-1">−</button><span>${s.q}</span><button type="button" data-q="1">+</button></span>` : `<button class="add" type="button" data-q="1">Add</button>`}</div></div>`;
+  }).join('') + (hidden > 0 ? `<div class="pick-lock"><b>${hidden} more design${hidden>1?'s':''} in ${esc(c.name)}</b><p>${viewerPending() ? 'Your account is under review — you will see every design once approved.' : 'Register free as a retailer to see and choose from every design.'}</p>${viewerPending() ? '' : '<button class="btn btn-gold" data-cat-reg type="button">Register free</button>'}</div>` : '');
+  renderSel();
+}
+$('pickGrid').addEventListener('click', e => {
+  const z = e.target.closest('[data-zoom]');
+  if (z) { const list = pickCat.designs.map(d => ({ type:'image', src:d.src, thumbnail:d.thumb, code:d.code, purity:[] })); return openLB(list, +z.dataset.zoom); }
+  const b = e.target.closest('[data-q]'); if (!b) return;
+  const code = b.closest('.pt').dataset.code, cur = SEL[code] ? SEL[code].q : 0, q = Math.max(0, cur + Number(b.dataset.q));
+  if (q) SEL[code] = { q, cat: pickCat.name }; else delete SEL[code];
+  saveSel(); renderPick();
+});
 function renderCatalogues(){
   const full = !!(FEED && FEED.viewer && FEED.viewer.status === 'approved');
-  document.querySelectorAll('[data-cat-view]').forEach(a=> a.textContent = full ? 'View full catalogue' : 'View preview');
+  document.querySelectorAll('.cat:not([data-dyn]) [data-cat-view]').forEach(a=> a.textContent = full ? 'View full catalogue' : 'View preview');
   document.querySelectorAll('[data-cat-note]').forEach(n=>{
     n.hidden = full || !(FEED && FEED.accounts);
     if (viewerPending()) n.textContent = 'Your account is under review. You will see all 50 designs once approved.';
@@ -874,7 +978,7 @@ async function load(){
   ITEMS = FEED.items || []; CATS = FEED.categories || [];
   CATS.forEach(c => byCat[c.slug] = []);
   ITEMS.forEach(it => (it.cats||[]).forEach(s => byCat[s] && byCat[s].push(it)));
-  renderAccount(); renderCatalogues(); renderHero(); renderCollections(); renderChips(); applyFeed(); route();
+  renderAccount(); renderCatalogues(); loadCatalogues(); renderHero(); renderCollections(); renderChips(); applyFeed(); route();
 }
 load();
 </script>

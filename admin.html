@@ -59,7 +59,7 @@
   .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:30}
   .sheet .box{background:#fff;width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
   .sheet .acts2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-  .tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--cream);border-radius:12px;padding:4px;margin-bottom:14px}
+  .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--cream);border-radius:12px;padding:4px;margin-bottom:14px}
   .tabs button{border:0;background:none;height:44px;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;font-size:15px}
   .tabs button.on{background:#fff;color:var(--maroon);box-shadow:0 1px 4px rgba(0,0,0,.08)}
   .badge{display:inline-block;min-width:20px;height:20px;border-radius:10px;background:var(--red);color:#fff;font-size:12px;line-height:20px;padding:0 6px;margin-left:4px}
@@ -79,6 +79,24 @@
   .cust .acts3 button,.cust .acts3 a{height:40px;border-radius:9px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13px;cursor:pointer;display:grid;place-items:center}
   .cust .acts3 .ap{background:#1f8f4e;border-color:#1f8f4e;color:#fff}
   .cust .acts3 .rj{color:var(--red)}
+  .ctgrid,#catDraftGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+  .ct{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;position:relative}
+  .ct.off{opacity:.45}
+  .ct img{width:100%;aspect-ratio:1/1;object-fit:contain;display:block;background:#fff}
+  .ct .warn{position:absolute;top:6px;left:6px;right:6px;background:#fff4e0;color:#8a5300;font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px}
+  .ctb{padding:8px;display:grid;gap:6px;font-size:13px}
+  .ctb .pg{color:var(--muted);font-size:12px}
+  .ctb input[type=text]{height:38px;font-size:14px;padding:0 10px}
+  .ck{display:flex;gap:6px;align-items:center;margin:0;font-size:13px;color:var(--ink)}
+  .ctbtn{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .ctbtn button{height:34px;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:12.5px;cursor:pointer}
+  .ctbtn .rj,.acts3 .rj{color:var(--red)}
+  .ctlist{margin-top:10px}
+  textarea{width:100%;min-height:110px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px}
+  .lkrows{display:grid;gap:6px;margin-top:8px}
+  .lkr{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:center}
+  .lkr img{width:52px;height:52px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid var(--line)}
+  .lkr .s{font-size:12.5px;color:var(--muted)}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -97,7 +115,7 @@
 
   <!-- Upload -->
   <section id="app" hidden>
-    <div class="tabs"><button class="on" data-tab="products">Products</button><button data-tab="customers">Customers <span class="badge" id="pendBadge" hidden></span></button></div>
+    <div class="tabs"><button class="on" data-tab="products">Products</button><button data-tab="customers">Customers <span class="badge" id="pendBadge" hidden></span></button><button data-tab="catalogues">Catalogues</button></div>
     <div id="tabProducts">
     <div class="card">
       <h2>Add products</h2>
@@ -137,6 +155,43 @@
         <div id="cList"></div>
         <div class="empty" id="cEmpty" hidden>No accounts here.</div>
         <div class="err" id="cErr"></div>
+      </div>
+    </div>
+    <div id="tabCatalogues" hidden>
+      <div class="card">
+        <h2>Look up a retailer's list</h2>
+        <div class="hint" style="margin-top:0">Paste the WhatsApp message. You get each design's supplier code and catalogue.</div>
+        <textarea id="lkText" placeholder="e.g. SJH-DE-03 ×2, SJH-DE-14 ×1"></textarea>
+        <button class="btn btn-main full" id="lkBtn">Find supplier codes</button>
+        <div id="lkOut" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h2>New catalogue</h2>
+        <button class="btn btn-soft" id="catPick">Choose supplier PDF</button>
+        <input type="file" id="catFile" accept="application/pdf,.pdf" hidden>
+        <div class="hint" id="catFileName"></div>
+        <label for="catName">Catalogue name (shown to customers)</label>
+        <input type="text" id="catName" placeholder="e.g. Drop Earrings" autocomplete="off">
+        <label for="catPrefix">Our code prefix</label>
+        <input type="text" id="catPrefix" placeholder="e.g. SJH-DE" autocomplete="off">
+        <label for="catSPrefix">Supplier's code prefix (from their PDF)</label>
+        <input type="text" id="catSPrefix" placeholder="e.g. DCLE" autocomplete="off">
+        <div class="hint">Designs are numbered in page order: ours SJH-DE-01, 02… and the supplier's DCLE 1, 2… — you can correct any supplier code before saving.</div>
+        <button class="btn btn-main full" id="catProcess">Cut out the designs</button>
+        <div class="err" id="catErr"></div>
+        <div class="st" id="catProg"></div>
+      </div>
+      <div class="card" id="catDraft" hidden>
+        <h2 id="catDraftTitle"></h2>
+        <div class="hint" style="margin-top:0">Untick pages that are not designs (cover, index…). Pages marked "No design found" are shown as the whole page.</div>
+        <div id="catDraftGrid"></div>
+        <div class="acts2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px"><button class="btn btn-soft" id="catDiscard">Discard</button><button class="btn btn-main" id="catSave">Save catalogue</button></div>
+      </div>
+      <div class="card">
+        <h2>Your catalogues</h2>
+        <div id="catList"></div>
+        <div class="empty" id="catEmpty" hidden>No catalogues yet.</div>
+        <div class="err" id="catListErr"></div>
       </div>
     </div>
   </section>
@@ -351,8 +406,9 @@ $('eSave').onclick = async () => {
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on', x===b));
-  $('tabProducts').hidden = b.dataset.tab!=='products'; $('tabCustomers').hidden = b.dataset.tab!=='customers';
+  $('tabProducts').hidden = b.dataset.tab!=='products'; $('tabCustomers').hidden = b.dataset.tab!=='customers'; $('tabCatalogues').hidden = b.dataset.tab!=='catalogues';
   if (b.dataset.tab==='customers') loadCustomers();
+  if (b.dataset.tab==='catalogues') loadCatalogues();
 });
 
 /* ---------- customers ---------- */
@@ -417,5 +473,6 @@ $('cList').addEventListener('click', async e => {
 /* auto-login if password saved on this phone */
 if (TOK) login(); else suggest();
 </script>
+<script src="/admin-catalogues.js"></script>
 </body>
 </html>

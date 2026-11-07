@@ -7,8 +7,9 @@ import feed from "./netlify/functions/feed.mjs";
 import instagram from "./netlify/functions/instagram.mjs";
 import products from "./netlify/functions/products.mjs";
 import stock from "./netlify/functions/stock.mjs";
+import catalogues from "./netlify/functions/catalogues.mjs";
 
-const ROUTES = { account, admin, catalogue, feed, instagram, products, stock };
+const ROUTES = { account, admin, catalogue, catalogues, feed, instagram, products, stock };
 const SECURITY = {
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",

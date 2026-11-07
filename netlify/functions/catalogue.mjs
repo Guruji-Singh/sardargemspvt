@@ -11,6 +11,8 @@
 
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
+import { getCatalogue, downloadUrl } from "../lib/catalogues.mjs";
+import { cloudEnv } from "../lib/cloud.mjs";
 
 const CATALOGUES = {
   "drop-earrings": { file: "/netlify/private/drop-earrings.enc", title: "Sardar Gems - Drop Earrings.pdf", preview: "/catalogues/sardar-gems-drop-earrings-preview.pdf" }
@@ -35,26 +37,55 @@ async function decrypt(req, ctx, path) {
   return (cache[path] = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, sealed));
 }
 
+// A catalogue by slug: the built-in Drop Earrings one, or one made in the admin page.
+async function findCatalogue(slug) {
+  slug = String(slug || "");
+  if (CATALOGUES[slug]) return { ...CATALOGUES[slug], ready: !!process.env.CATALOGUE_KEY };
+  if (!cloudEnv()) return null;
+  const c = await getCatalogue(slug).catch(() => null);
+  if (!c || c.status !== "published") return null;
+  return { title: `Sardar Gems - ${c.name}.pdf`, branded: c.branded, ready: !!c.branded,
+           preview: c.preview ? `/api/catalogue?preview=${encodeURIComponent(slug)}` : "/#catalogues" };
+}
+
+async function streamPdf(publicId, title) {
+  const r = await fetch(downloadUrl(publicId, 5));
+  if (!r.ok) return new Response("Catalogue not available", { status: 502 });
+  return new Response(r.body, { headers: {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${title.replace(/"/g, "")}"`,
+    "Cache-Control": "private, no-store",
+    "X-Robots-Tag": "noindex"
+  } });
+}
+
 export default async (req, ctx) => {
   const url = new URL(req.url);
 
   if (req.method === "POST") {
     let body = {}; try { body = await req.json(); } catch {}
-    const cat = CATALOGUES[body.name];
+    const cat = await findCatalogue(body.name);
     if (!cat) return out({ error: "Unknown catalogue" }, 404);
     const viewer = await viewerFrom(req);
     const full = accountsReady() && viewer && viewer.status === "approved";
     if (!full) return out({ preview: cat.preview, reason: viewer ? "pending" : "guest" });
-    if (!process.env.CATALOGUE_KEY) return out({ preview: cat.preview, reason: "not-ready" });
+    if (!cat.ready) return out({ preview: cat.preview, reason: "not-ready" });
     const e = Date.now() + LINK_MINUTES * 60e3;
     return out({ url: `/api/catalogue?f=${encodeURIComponent(body.name)}&e=${e}&s=${sign(body.name, e)}` });
   }
 
+  const previewSlug = url.searchParams.get("preview");
+  if (previewSlug) {
+    const c = await getCatalogue(previewSlug).catch(() => null);
+    if (!c || c.status !== "published" || !c.preview) return Response.redirect(new URL("/#catalogues", url.origin), 302);
+    return streamPdf(c.preview, `Sardar Gems - ${c.name} (preview).pdf`);
+  }
   const f = url.searchParams.get("f") || "", e = Number(url.searchParams.get("e") || 0), s = url.searchParams.get("s") || "";
-  const cat = CATALOGUES[f];
+  const cat = await findCatalogue(f);
   const want = sign(f, e);
   const valid = cat && e > Date.now() && s.length === want.length && timingSafeEqual(Buffer.from(s), Buffer.from(want));
   if (!valid) return Response.redirect(new URL((cat && cat.preview) || "/#catalogues", url.origin), 302);
+  if (cat.branded) return streamPdf(cat.branded, cat.title);
   try {
     const pdf = await decrypt(req, ctx, cat.file);
     return new Response(pdf, { headers: {
