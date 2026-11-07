@@ -7,16 +7,19 @@ import { listCatalogues, listTiles } from "../lib/catalogues.mjs";
 import { cloudEnv } from "../lib/cloud.mjs";
 
 const GUEST_DESIGNS = 4;
-const cache = { at: 0, data: [] };
+const cache = { at: 0, data: [], info: {} };
 
 async function published() {
   if (Date.now() - cache.at < 60e3) return cache.data;
-  const cats = (await listCatalogues()).filter(c => c.status === "published");
+  const every = await listCatalogues();
+  const cats = every.filter(c => c.status === "published");
+  cache.info = { stored: every.length, published: cats.length };
   const withTiles = await Promise.all(cats.map(async c => {
     try { return { ...c, tiles: await listTiles(c.slug) }; }
     catch (e) { console.warn("catalogue tiles", c.slug, e.message); return { ...c, tiles: [] }; }
   }));
   cache.at = Date.now(); cache.data = withTiles;
+  cache.info.withDesigns = withTiles.filter(c => c.tiles.length).length;
   return withTiles;
 }
 
@@ -26,7 +29,7 @@ export default async (req) => {
   const [cats, viewer] = await Promise.all([published().catch(e => { console.warn("catalogues", e.message); problem = e.message; return []; }), viewerFrom(req)]);
   const full = !accountsReady() || !!(viewer && viewer.status === "approved");
   return Response.json({
-    full, ...(problem ? { problem } : {}),
+    full, ...(problem ? { problem } : {}), info: cache.info,
     catalogues: cats.filter(c => c.tiles.length).map(c => ({
       slug: c.slug, name: c.name, total: c.tiles.length,
       pdf: !!c.branded, preview: !!c.preview,
