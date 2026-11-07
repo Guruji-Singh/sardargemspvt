@@ -7,10 +7,10 @@ import { listCatalogues, listTiles } from "../lib/catalogues.mjs";
 import { cloudEnv } from "../lib/cloud.mjs";
 
 const GUEST_DESIGNS = 4;
-const cache = { at: 0, data: [], info: {} };
+const cache = { at: 0, ttl: 0, data: [], info: {} };
 
 async function published() {
-  if (Date.now() - cache.at < 180e3) return cache.data;     // 3 min: keeps Cloudinary API use low
+  if (Date.now() - cache.at < cache.ttl) return cache.data;   // 3 min normally; 20 s while a catalogue is incomplete
   const every = await listCatalogues();
   const cats = every.filter(c => c.status === "published");
   cache.info = { stored: every.length, published: cats.length };
@@ -19,6 +19,7 @@ async function published() {
     catch (e) { console.warn("catalogue tiles", c.slug, e.message); cache.info.tileError = e.message; return { ...c, tiles: [] }; }
   }));
   cache.at = Date.now(); cache.data = withTiles;
+  cache.ttl = withTiles.every(c => !c.count || c.tiles.length >= c.count) ? 180e3 : 20e3;
   cache.info.withDesigns = withTiles.filter(c => c.tiles.length).length;
   return withTiles;
 }

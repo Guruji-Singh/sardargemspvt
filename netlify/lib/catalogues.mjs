@@ -91,14 +91,16 @@ export async function listTiles(cat) {
   const env = cloudEnv();
   if (!cat || !cat.dir) return [];
   const isTile = r => !r.tags || r.tags.includes(TAGS.tile);
-  let rows = [], firstErr = null;
-  try { rows = (await listByPrefix("image/upload", `catalogues/${cat.dir}/`)).filter(isTile); }
-  catch (e) { firstErr = e; }
-  if (!rows.length) {
-    try { rows = await search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${cat.slug}"`); }
-    catch (e) { if (firstErr) throw firstErr; }
-  }
-  return rows.map(r => tileFromResource(r, env.cloud)).sort((a, b) => (a.n - b.n) || a.publicId.localeCompare(b.publicId));
+  // Two sources: the direct list (up to date) and search (can lag a few minutes). Use whichever has more.
+  const [a, b] = await Promise.allSettled([
+    listByPrefix("image/upload", `catalogues/${cat.dir}/`).then(rows => rows.filter(isTile)),
+    search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${cat.slug}"`)
+  ]);
+  const rowsA = a.status === "fulfilled" ? a.value : [], rowsB = b.status === "fulfilled" ? b.value : [];
+  if (!rowsA.length && !rowsB.length && a.status === "rejected") throw a.reason;
+  const byId = new Map();
+  [...rowsB, ...rowsA].forEach(r => byId.set(r.public_id, r));
+  return [...byId.values()].map(r => tileFromResource(r, env.cloud)).sort((x, y) => (x.n - y.n) || x.publicId.localeCompare(y.publicId));
 }
 
 /** Tiles whose code is in `codes` (up to 60 at a time). */
