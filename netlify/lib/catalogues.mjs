@@ -88,8 +88,19 @@ export async function getCatalogue(slug) {
 export async function listTiles(slug) {
   const env = cloudEnv();
   if (!SLUG.test(slug)) return [];
-  const rows = await listByPrefix("image/upload", `catalogues/${slug}/`);
-  return rows.filter(r => (r.tags || []).includes(TAGS.tile)).map(r => tileFromResource(r, env.cloud)).sort((a, b) => a.n - b.n);
+  const isTile = r => !r.tags || r.tags.includes(TAGS.tile);
+  let rows = [], firstErr = null;
+  try { rows = (await listByPrefix("image/upload", `catalogues/${slug}/`)).filter(isTile); }
+  catch (e) { firstErr = e; }
+  if (!rows.length) {      // fall back to search (by tag + public_id, or by context)
+    try { rows = await search(`resource_type:image AND public_id:catalogues/${slug}/*`); }
+    catch (e) {
+      try { rows = await search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${slug}"`); }
+      catch (e2) { throw firstErr || e2; }
+    }
+  }
+  if (!rows.length && firstErr) throw firstErr;
+  return rows.map(r => tileFromResource(r, env.cloud)).sort((a, b) => (a.n - b.n) || a.publicId.localeCompare(b.publicId));
 }
 
 /** Tiles whose code is in `codes` (up to 60 at a time). */

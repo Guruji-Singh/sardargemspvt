@@ -16,7 +16,7 @@ async function published() {
   cache.info = { stored: every.length, published: cats.length };
   const withTiles = await Promise.all(cats.map(async c => {
     try { return { ...c, tiles: await listTiles(c.slug) }; }
-    catch (e) { console.warn("catalogue tiles", c.slug, e.message); return { ...c, tiles: [] }; }
+    catch (e) { console.warn("catalogue tiles", c.slug, e.message); cache.info.tileError = e.message; return { ...c, tiles: [] }; }
   }));
   cache.at = Date.now(); cache.data = withTiles;
   cache.info.withDesigns = withTiles.filter(c => c.tiles.length).length;
