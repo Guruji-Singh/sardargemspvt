@@ -4,20 +4,9 @@
 // Needs env vars STOCK_API_URL (https://office.sardargems.com/sjh-website/stock.php) and STOCK_API_KEY.
 
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
+import { loadStock } from "../lib/elysian.mjs";
 
-const cache = { at: 0, data: null };
 const out = (data, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "private, no-store" } });
-
-async function loadStock() {
-  if (cache.data && Date.now() - cache.at < 60e3) return cache.data;
-  const url = process.env.STOCK_API_URL, key = process.env.STOCK_API_KEY;
-  if (!url || !key) throw new Error("Stock link not set up");
-  const r = await fetch(url, { headers: { "X-Api-Key": key, "Accept": "application/json" } });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !Array.isArray(j.items)) throw new Error(j.error || `Stock API ${r.status}`);
-  cache.data = j; cache.at = Date.now();
-  return j;
-}
 
 export default async (req) => {
   const viewer = await viewerFrom(req);

@@ -1,15 +1,17 @@
 // GET /api/feed — everything the website shows, filtered by who is looking.
 //   Guests and accounts awaiting approval: first 10 designs per category.
 //   Approved customers: everything.
-// Sources: admin uploads (Cloudinary), media/ folder in GitHub, Instagram (product posts only).
+// Sources: ready stock with photos/videos (Elysian), admin uploads (Cloudinary), media/ folder in GitHub,
+// Instagram (product posts only).
 
 import { CATEGORIES, categoriesFromCaption, purityFromCaption, catFromSlug } from "../lib/catalog.mjs";
 import { listProducts } from "../lib/cloud.mjs";
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
 import MEDIA from "../lib/media-list.mjs";
+import { stockItems } from "../lib/elysian.mjs";
 
 const GUEST_LIMIT = 10;
-const cache = { products: { at: 0, data: [] }, ig: { at: 0, data: [] } };
+const cache = { products: { at: 0, data: [] }, ig: { at: 0, data: [] }, stock: { at: 0, data: [] } };
 
 async function cached(key, ttl, fn) {
   const c = cache[key];
@@ -18,9 +20,10 @@ async function cached(key, ttl, fn) {
   return c.data;
 }
 
-export default async (req) => {
+export default async (req, ctx) => {
   const origin = new URL(req.url).origin;
-  const [products, igRaw, viewer] = await Promise.all([
+  const later = ctx && typeof ctx.waitUntil === "function" ? p => ctx.waitUntil(p) : null;
+  const [products, igRaw, stock, viewer] = await Promise.all([
     cached("products", 60e3, listProducts),
     cached("ig", 300e3, async () => {
       const r = await fetch(origin + "/api/instagram");          // CDN-cached Instagram function
@@ -28,6 +31,7 @@ export default async (req) => {
       if (!r.ok || j.error) throw new Error(j.error || r.status);
       return j.items || [];
     }),
+    cached("stock", 60e3, () => stockItems(later)),        // Elysian ready stock with photo/video
     viewerFrom(req)
   ]);
 
@@ -37,7 +41,8 @@ export default async (req) => {
   const ig = igRaw
     .map(it => ({ ...it, source: "instagram", cats: categoriesFromCaption(it.caption), purity: purityFromCaption(it.caption) }))
     .filter(it => it.cats.length && it.src);                      // product posts only (no greetings/promos)
-  const all = [...uploads, ...media, ...ig];
+  const ely = stock.map(it => ({ ...it }));
+  const all = [...ely, ...uploads, ...media, ...ig];
 
   // 2) access level
   // Until accounts are switched on (SUPABASE_SERVICE_KEY set), show everything so nobody is locked out.
@@ -52,6 +57,7 @@ export default async (req) => {
     if (!ok) continue;
     it.cats.forEach(s => shownPer[s]++);
     const { publicId, resourceType, ...pub } = it;
+    if (!full) delete pub.weight;                                   // weights only for approved retailers
     visible.push(pub);
   }
 
