@@ -14,9 +14,7 @@ import { viewerFrom, accountsReady } from "../lib/auth.mjs";
 import { getCatalogue, downloadUrl } from "../lib/catalogues.mjs";
 import { cloudEnv } from "../lib/cloud.mjs";
 
-const CATALOGUES = {
-  "drop-earrings": { file: "/netlify/private/drop-earrings.enc", title: "Sardar Gems - Drop Earrings.pdf", preview: "/catalogues/sardar-gems-drop-earrings-preview.pdf" }
-};
+const CATALOGUES = {};          // built-in catalogues (none now; all are made in Admin → Catalogues)
 const LINK_MINUTES = 10;
 const out = (data, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const linkSecret = () => createHash("sha256").update("sjh-catalogue|" + (process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_KEY || "")).digest();

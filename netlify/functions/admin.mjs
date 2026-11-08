@@ -24,7 +24,7 @@ import { TAG, cloudEnv, signParams, listProducts } from "../lib/cloud.mjs";
 import { db, accountsReady, hashPassword } from "../lib/auth.mjs";
 import { PURITIES } from "../lib/catalog.mjs";
 import { RULES, clientIp, lockedFor, recordFail, clearFails, lockedMsg } from "../lib/limit.mjs";
-import { TAGS, SLUG as CAT_SLUG, cleanCtx, listCatalogues, getCatalogue, listTiles, findCodes, downloadUrl, signUpload, setContext, destroy, deleteCatalogue, catalogueContext } from "../lib/catalogues.mjs";
+import { TAGS, SLUG as CAT_SLUG, cleanCtx, saveTileRows, listCatalogues, getCatalogue, listTiles, findCodes, downloadUrl, signUpload, setContext, destroy, deleteCatalogue, catalogueContext } from "../lib/catalogues.mjs";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 const tileContext = t => `cat=${t.cat}|code=${cleanCtx(t.code)}|orig=${cleanCtx(t.orig)}|page=${Number(t.page) || 0}|n=${Number(t.n) || 0}`;
@@ -110,9 +110,21 @@ export default async (req) => {
       return out({ ok: true, result: j.result || "ok" });
     }
 
-    case "cat-list": return out({ catalogues: await listCatalogues() });
+    case "cat-list": {
+      const cats = await listCatalogues();
+      await Promise.all(cats.map(async c => { try { c.stored = (await listTiles(c)).length; } catch { c.stored = null; } }));
+      return out({ catalogues: cats });
+    }
 
-    case "cat-tiles": return out({ tiles: await listTiles(await getCatalogue(String(body.slug || ""))) });
+    case "tile-add": {
+      const cat = await getCatalogue(String(body.slug || ""));
+      const publicId = String(body.publicId || "");
+      if (!cat || !publicId.startsWith(`catalogues/${cat.dir}/`)) return out({ error: "Not allowed" }, 400);
+      await saveTileRows([{ public_id: publicId, cat: cat.slug, code: cleanCtx(body.code).toUpperCase(), orig: cleanCtx(body.orig), page: Number(body.page) || 0, n: Number(body.n) || 0 }]);
+      return out({ ok: true });
+    }
+
+    case "cat-tiles": return out({ tiles: await listTiles(await getCatalogue(String(body.slug || "")), { sync: true }) });
 
     case "cat-sign": {
       const slug = String(body.slug || "");
@@ -152,8 +164,13 @@ export default async (req) => {
       const dir = publicId.split("/")[1] || "";
       if (!publicId.startsWith("catalogues/") || !/^[a-z0-9-]{1,60}$/.test(dir)) return out({ error: "Not allowed" }, 400);
       const cat = String(body.cat || dir);
-      if (body.action === "tile-delete") await destroy({ resourceType: "image", type: "upload", publicId });
-      else await setContext({ resourceType: "image", type: "upload", publicId, context: tileContext({ ...body, cat }) });
+      if (body.action === "tile-delete") {
+        await destroy({ resourceType: "image", type: "upload", publicId });
+        await db(`catalogue_tiles?public_id=eq.${encodeURIComponent(publicId)}`, { method: "DELETE" }).catch(() => {});
+      } else {
+        await setContext({ resourceType: "image", type: "upload", publicId, context: tileContext({ ...body, cat }) });
+        await saveTileRows([{ public_id: publicId, cat, code: cleanCtx(body.code).toUpperCase(), orig: cleanCtx(body.orig), page: Number(body.page) || 0, n: Number(body.n) || 0 }]);
+      }
       return out({ ok: true });
     }
 

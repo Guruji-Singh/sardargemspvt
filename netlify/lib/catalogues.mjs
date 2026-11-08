@@ -14,6 +14,7 @@
 // Each tile's context: cat (slug), code (SJH-DE-03), orig (DCLE 3), page (3), n (3)
 
 import { cloudEnv, signParams } from "./cloud.mjs";
+import { db, accountsReady } from "./auth.mjs";
 
 export const TAGS = { cat: "sjh-catalogue", pdf: "sjh-catalogue-pdf", tile: "sjh-tile" };
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -86,21 +87,54 @@ export async function getCatalogue(slug) {
   return (await listCatalogues()).find(c => c.slug === slug) || null;
 }
 
-/** Designs of one catalogue (pass the catalogue from listCatalogues/getCatalogue). */
-export async function listTiles(cat) {
-  const env = cloudEnv();
-  if (!cat || !cat.dir) return [];
+/* The list of designs is kept in the database (table catalogue_tiles), written by the admin page right after
+   each upload. Reading it is instant and doesn't use Cloudinary's API, which on the free plan is limited per hour
+   and whose search can lag behind new uploads. Designs not yet in the table (older catalogues) are picked up from
+   Cloudinary at most every 5 minutes per catalogue and saved to the table. */
+const rowToTile = (r, cloud) => {
+  const base = `https://res.cloudinary.com/${cloud}/image/upload`;
+  return { publicId: r.public_id, cat: r.cat, code: r.code, orig: r.orig, page: r.page, n: r.n,
+           src: `${base}/f_auto,q_auto,w_1000,c_limit/${r.public_id}`, thumb: `${base}/f_auto,q_auto,w_480,c_limit/${r.public_id}` };
+};
+const lastSync = {};
+
+export async function saveTileRows(rows) {
+  if (!rows.length || !accountsReady()) return;
+  await db("catalogue_tiles?on_conflict=public_id", { method: "POST", body: rows, prefer: "resolution=merge-duplicates,return=minimal" });
+}
+
+async function cloudinaryTiles(cat) {
   const isTile = r => !r.tags || r.tags.includes(TAGS.tile);
-  // Two sources: the direct list (up to date) and search (can lag a few minutes). Use whichever has more.
   const [a, b] = await Promise.allSettled([
     listByPrefix("image/upload", `catalogues/${cat.dir}/`).then(rows => rows.filter(isTile)),
     search(`resource_type:image AND tags=${TAGS.tile} AND context.cat="${cat.slug}"`)
   ]);
-  const rowsA = a.status === "fulfilled" ? a.value : [], rowsB = b.status === "fulfilled" ? b.value : [];
-  if (!rowsA.length && !rowsB.length && a.status === "rejected") throw a.reason;
   const byId = new Map();
-  [...rowsB, ...rowsA].forEach(r => byId.set(r.public_id, r));
-  return [...byId.values()].map(r => tileFromResource(r, env.cloud)).sort((x, y) => (x.n - y.n) || x.publicId.localeCompare(y.publicId));
+  [...(b.status === "fulfilled" ? b.value : []), ...(a.status === "fulfilled" ? a.value : [])].forEach(r => byId.set(r.public_id, r));
+  if (!byId.size && a.status === "rejected") throw a.reason;
+  return [...byId.values()].map(r => { const c = ctxOf(r); return { public_id: r.public_id, cat: cat.slug, code: c.code || "", orig: c.orig || "", page: Number(c.page || 0), n: Number(c.n || 0) }; });
+}
+
+/** Designs of one catalogue (pass the catalogue from listCatalogues/getCatalogue). */
+export async function listTiles(cat, { sync = false } = {}) {
+  const env = cloudEnv();
+  if (!cat || !cat.dir) return [];
+  const mine = r => r.public_id.startsWith(`catalogues/${cat.dir}/`);
+  let rows = [];
+  if (accountsReady()) {
+    try { rows = (await db(`catalogue_tiles?cat=eq.${encodeURIComponent(cat.slug)}&select=*&order=n.asc&limit=2000`)).filter(mine); }
+    catch (e) { console.warn("catalogue_tiles", e.message); }
+  }
+  const due = sync || !lastSync[cat.dir] || Date.now() - lastSync[cat.dir] > 5 * 60e3;
+  if ((rows.length < (cat.count || 1) || !accountsReady()) && due) {
+    lastSync[cat.dir] = Date.now();
+    try {
+      const found = (await cloudinaryTiles(cat)).filter(mine);
+      const have = new Set(rows.map(r => r.public_id)), add = found.filter(r => !have.has(r.public_id));
+      if (add.length) { rows = rows.concat(add); saveTileRows(add).catch(e => console.warn("save tiles", e.message)); }
+    } catch (e) { if (!rows.length) throw e; }
+  }
+  return rows.map(r => rowToTile(r, env.cloud)).sort((x, y) => (x.n - y.n) || x.publicId.localeCompare(y.publicId));
 }
 
 /** Tiles whose code is in `codes` (up to 60 at a time). */
@@ -108,8 +142,19 @@ export async function findCodes(codes) {
   const env = cloudEnv();
   const list = [...new Set(codes.map(c => cleanCtx(c).toUpperCase()).filter(Boolean))].slice(0, 60);
   if (!list.length) return [];
-  const expr = `resource_type:image AND tags=${TAGS.tile} AND (${list.map(c => `context.code="${c}"`).join(" OR ")})`;
-  return (await search(expr)).map(r => tileFromResource(r, env.cloud));
+  let rows = [];
+  if (accountsReady()) {
+    try { rows = await db(`catalogue_tiles?select=*&code=in.(${list.map(c => `"${c.replace(/"/g, "")}"`).join(",")})`); }
+    catch (e) { console.warn("findCodes", e.message); }
+  }
+  const missing = list.filter(c => !rows.some(r => r.code.toUpperCase() === c));
+  if (missing.length) {
+    try {
+      const expr = `resource_type:image AND tags=${TAGS.tile} AND (${missing.map(c => `context.code="${c}"`).join(" OR ")})`;
+      (await search(expr)).forEach(r => { const c = ctxOf(r); rows.push({ public_id: r.public_id, cat: c.cat || "", code: c.code || "", orig: c.orig || "", page: Number(c.page || 0), n: Number(c.n || 0) }); });
+    } catch (e) { console.warn("findCodes search", e.message); }
+  }
+  return rows.map(r => rowToTile(r, env.cloud));
 }
 
 /** Short-lived download link for a stored PDF (only used server-side or handed to the admin). */
@@ -157,6 +202,7 @@ export async function deleteCatalogue(cat) {
   const env = cloudEnv();
   if (!cat || !cat.dir) throw new Error("Bad catalogue");
   const prefix = encodeURIComponent(`catalogues/${cat.dir}/`);
+  if (accountsReady()) await db(`catalogue_tiles?public_id=like.${encodeURIComponent(`catalogues/${cat.dir}/*`)}`, { method: "DELETE" }).catch(e => console.warn("delete tiles", e.message));
   for (const path of ["image/upload", "raw/authenticated"]) {
     for (let i = 0; i < 5; i++) {
       const r = await fetch(`https://api.cloudinary.com/v1_1/${env.cloud}/resources/${path}?prefix=${prefix}&invalidate=true`, { method: "DELETE", headers: auth(env) });

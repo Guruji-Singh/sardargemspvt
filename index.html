@@ -33,6 +33,8 @@
   a{color:inherit;text-decoration:none}
   button,input,select{font:inherit;color:inherit}
   [hidden]{display:none!important}
+  .mcat{display:none}
+  @media(max-width:600px){.mcat{display:flex;margin:14px auto 0;width:max-content;height:44px}}
   .wrap{max-width:1180px;margin:0 auto;padding:0 20px}
   .serif{font-family:"Cormorant Garamond",Georgia,serif}
   .eyebrow{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);font-weight:600}
@@ -348,6 +350,7 @@
     </a>
     <ul>
       <li><a href="#collections">Collections</a></li>
+      <li id="navCats" hidden><a href="#catalogues">Catalogues</a></li>
       <li><a href="#designs">All Designs</a></li>
       <li><a href="#about">About</a></li>
     </ul>
@@ -367,7 +370,8 @@
       <h1>Premium <em>light&#8209;weight</em> gold jewellery</h1>
       <p>Wholesale supplier to jewellers across Punjab and beyond — ready stock in every purity.</p>
       <div class="pills"><span>14K · 16K · 18K · 20K · 22K</span><span>Ready stock</span><span>Wholesale only</span></div>
-      <div class="hero-cta"><a href="#collections" class="btn btn-gold">Browse collections</a><a class="btn btn-line" id="heroJoin">Register as retailer</a></div>
+      <a href="#catalogues" class="btn btn-gold mcat" id="mobCats" hidden>View catalogues</a>
+      <div class="hero-cta"><a href="#collections" class="btn btn-gold">Browse collections</a><a href="#catalogues" class="btn btn-line" id="heroCats" hidden>Catalogues</a><a class="btn btn-line" id="heroJoin">Register as retailer</a></div>
     </div>
     <div class="reels" id="reels" hidden></div>
   </div>
@@ -398,25 +402,13 @@
   </div>
 </section>
 
-<section id="catalogues">
+<section id="catalogues" hidden>
   <div class="wrap">
     <div class="head">
-      <div><div class="eyebrow">Download &amp; share</div><h2>Catalogues</h2></div>
-      <p>Open a catalogue, pick the design code you like, and send it to us on WhatsApp for weight and rates.</p>
+      <div><div class="eyebrow">Choose &amp; order</div><h2>Catalogues</h2></div>
+      <p>Open a catalogue, add the designs you like to your cart, and send it to us on WhatsApp for weights and rates.</p>
     </div>
     <div class="cats">
-      <div class="cat">
-        <img src="catalogues/drop-earrings-cover.jpg" alt="Drop earrings catalogue" loading="lazy">
-        <div>
-          <h3>Drop Earrings</h3>
-          <div class="kts">18K Gold · 50 designs · PDF</div>
-          <div class="acts">
-            <a class="btn btn-gold" data-cat-view="drop-earrings" href="catalogues/sardar-gems-drop-earrings-preview.pdf" target="_blank" rel="noopener">View preview</a>
-            <a class="btn btn-line" data-cat-share="Drop Earrings" target="_blank" rel="noopener">Share</a>
-          </div>
-          <div class="cat-note" data-cat-note>Guests see 2 pages. <a data-cat-reg>Register free</a> to see all 50 designs.</div>
-        </div>
-      </div>
     </div>
     <div class="mylist" id="myList"><span>Your cart: <b id="myListN">0 items</b></span><span style="display:flex;gap:8px"><button class="btn btn-line" id="myListClear" type="button">Clear</button><button class="btn btn-gold" id="myListSend" type="button">Send on WhatsApp</button></span></div>
   </div>
@@ -704,6 +696,7 @@ async function loadCatalogues(){
   } catch(e) { CATALOGS = []; }
   const box = document.querySelector('#catalogues .cats');
   box.querySelectorAll('.cat[data-dyn]').forEach(x => x.remove());
+  $('catalogues').hidden = $('navCats').hidden = $('heroCats').hidden = $('mobCats').hidden = !CATALOGS.length;
   CATALOGS.forEach(c => {
     const el = document.createElement('div'); el.className = 'cat'; el.dataset.dyn = c.slug;
     const pdf = c.pdf ? `<a class="btn btn-line" data-cat-view="${esc(c.slug)}" href="${c.preview ? '/api/catalogue?preview=' + encodeURIComponent(c.slug) : '#catalogues'}" target="_blank" rel="noopener">PDF</a>` : '';

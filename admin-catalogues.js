@@ -280,7 +280,8 @@ $('catSave').onclick = async () => {
       const t = kept[i];
       catStatus(`Uploading designs… ${i+1} of ${kept.length}`);
       const s = await api({ action:'cat-sign', kind:'tile', slug, dir, n: t.n, code: t.code, orig: t.orig, page: t.page });
-      await cldUpload(s, t.blob, `${t.code}.jpg`);
+      const up = await cldUpload(s, t.blob, `${t.code}.jpg`);
+      await api({ action:'tile-add', slug, publicId: up.public_id, code: t.code, orig: t.orig, page: t.page, n: t.n });
     }
     catStatus('Making the branded PDF…');
     const full = await makeBrandedPdf(name, kept), prev = await makeBrandedPdf(name, kept, true);
@@ -313,7 +314,7 @@ function renderCatalogues(){
   $('catEmpty').hidden = CATS_ALL.length > 0;
   $('catList').innerHTML = CATS_ALL.map(c => `
     <div class="cust" data-slug="${esc(c.slug)}">
-      <div class="h"><div><b>${esc(c.name)}</b><div class="s">${c.count} designs · codes ${esc(c.prefix)}-01… · supplier ${esc(c.sprefix || '—')}</div></div>
+      <div class="h"><div><b>${esc(c.name)}</b><div class="s">${c.count} designs · codes ${esc(c.prefix)}-01… · supplier ${esc(c.sprefix || '—')}</div>${c.stored != null && c.stored < c.count ? `<div class="err" style="margin:4px 0 0">Only ${c.stored} of ${c.count} designs are stored — delete this catalogue and upload it again.</div>` : ''}</div>
         <span class="st-pill ${c.status === 'published' ? 'st-approved' : 'st-pending'}">${c.status === 'published' ? 'On website' : 'Draft'}</span></div>
       <div class="acts3">
         <button data-a="designs">Designs</button>
