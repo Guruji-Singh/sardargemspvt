@@ -690,7 +690,7 @@ let TOKEN = store.get('sjh_token') || '';
 const playIcon = '<svg width="12" height="12" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z" fill="#1E1A16"/></svg>';
 function catName(slug){ const c = CATS.find(x=>x.slug===slug); return c ? c.name : ''; }
 function tileHTML(it, i, showCat){
-  const label = it.source==='elysian' ? 'In stock' + (it.code && it.code.length<=14 ? ' · '+it.code : '') : (it.code || (showCat && it.cats && it.cats[0] ? catName(it.cats[0]) : ''));
+  const label = it.source==='elysian' ? 'In stock' : (it.code || (showCat && it.cats && it.cats[0] ? catName(it.cats[0]) : ''));
   const pur = it.purity || [], room = isNew(it) ? 1 : 2;
   const kts = pur.slice(0,room).map(p=>`<span class="kt">${p}</span>`).join('') + (pur.length>room ? `<span class="kt">+${pur.length-room}</span>` : '');
   const badges = (isNew(it)||kts) ? `<span class="badges">${isNew(it)?'<span class="new">NEW</span>':''}${kts}</span>` : '';
@@ -838,17 +838,20 @@ function showLB(){
   const it = lbList[lbI];
   $('lbMedia').innerHTML = it.type==='video'
     ? `<video ${it.preview||it.source==='instagram'?'autoplay loop muted':'autoplay'} playsinline controls ${it.thumbnail?`poster="${esc(it.thumbnail)}"`:''} src="${esc(it.src)}"></video>`
-    : `<img src="${esc(it.src)}" alt="${esc(it.code||'Design')}">`;
-  $('lbCode').textContent = it.code || (it.cats && it.cats[0] ? catName(it.cats[0]) : '');
-  $('lbPur').textContent = it.source==='elysian'
-    ? ['Ready stock', it.caption, (it.purity||[]).join(' '), it.weight ? `Net ${(+it.weight).toFixed(3)} g` : ''].filter(Boolean).join(' · ')
-    : (it.purity||[]).length ? 'Available in ' + it.purity.join(' · ') : '';
+    : `<img src="${esc(it.src)}" alt="${esc(it.source==='elysian' ? (it.caption||'Ready stock') : (it.code||'Design'))}">`;
+  const ely = it.source === 'elysian';
+  const elyName = ely ? (it.caption || (it.cats && it.cats[0] ? catName(it.cats[0]) : 'Ready stock')) : '';
+  const elyFacts = ely ? [(it.purity||[]).join(' '), it.weight ? `Net ${(+it.weight).toFixed(3)} g` : ''].filter(Boolean).join(' · ') : '';
+  $('lbCode').textContent = ely ? elyName : (it.code || (it.cats && it.cats[0] ? catName(it.cats[0]) : ''));
+  $('lbPur').textContent = ely ? elyFacts : (it.purity||[]).length ? 'Available in ' + it.purity.join(' · ') : '';
   $('lbLink').href = it.permalink || CONFIG.instagramUrl;
   $('lbLink').textContent = it.permalink ? 'View on Instagram →' : '';
   $('lbCount').textContent = lbList.length > 1 ? `${lbI+1} / ${lbList.length}` : '';
-  const what = (it.source==='elysian' ? `ready-stock piece ${it.code}${it.caption?` (${it.caption})`:''}` : it.code ? `design ${it.code}` : (it.cats && it.cats[0] ? `this ${catName(it.cats[0])} design` : 'this design')) + ((it.purity||[]).length ? ` (${it.purity.join('/')})` : '') + (it.permalink ? ` ${it.permalink}` : '');
-  $('lbAsk').href = waLink(`Hi Sardar Jewellery House, I'm a retailer interested in ${what}. Please share weight and rates. Shop name: , City: `);
-  $('lbAsk').textContent = it.code ? `Ask about ${it.code} on WhatsApp` : 'Ask about this design on WhatsApp';
+  const what = ely
+    ? `this ready-stock piece: ${[elyName, elyFacts].filter(Boolean).join(' · ')} (photo: ${it.thumbnail || it.src})`
+    : (it.code ? `design ${it.code}` : (it.cats && it.cats[0] ? `this ${catName(it.cats[0])} design` : 'this design')) + ((it.purity||[]).length ? ` (${it.purity.join('/')})` : '') + (it.permalink ? ` ${it.permalink}` : '');
+  $('lbAsk').href = waLink(`Hi Sardar Jewellery House, I'm a retailer interested in ${what}. Please share rates. Shop name: , City: `);
+  $('lbAsk').textContent = ely ? 'Ask about this piece on WhatsApp' : it.code ? `Ask about ${it.code} on WhatsApp` : 'Ask about this design on WhatsApp';
   $('lbPrev').style.display = $('lbNext').style.display = lbList.length>1 ? '' : 'none';
 }
 function hideLB(){ $('lb').classList.remove('open'); $('lbMedia').innerHTML=''; if(!panelCat) document.body.classList.remove('locked'); }
