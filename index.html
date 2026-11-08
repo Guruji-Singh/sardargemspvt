@@ -169,6 +169,21 @@
   .lb-pur{color:var(--gold-soft);font-size:14px;font-weight:600;margin-top:2px}
   .lb-code:empty,.lb-pur:empty{display:none}
   .lb-ask{background:var(--wa);color:#fff;width:100%;margin-top:12px;height:48px}
+  .lb-cart{margin-top:12px;display:flex;gap:10px;align-items:center}
+  .lb-cart .btn{flex:1;height:48px;background:#fff;color:var(--maroon)}
+  .lb-cart .in{flex:1;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.12);border-radius:12px;height:48px;padding:0 8px 0 14px;color:#fff;font-weight:600}
+  .lb-cart .qty button{background:#fff}
+  .lb-cart .qty span{color:#fff}
+  .cart-fab{position:fixed;right:16px;bottom:22px;z-index:47;display:none;align-items:center;gap:8px;background:var(--maroon);color:#fff;border:0;border-radius:999px;height:52px;padding:0 20px;font-weight:700;font-size:15px;box-shadow:0 6px 20px rgba(60,20,20,.3);cursor:pointer}
+  .cart-fab.on{display:flex}
+  .cart-fab b{background:var(--gold);border-radius:999px;min-width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;padding:0 7px;font-size:14px}
+  body.picking .cart-fab{display:none}
+  .cart-row{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+  .cart-row img{width:56px;height:56px;border-radius:10px;object-fit:contain;background:#fff;border:1px solid var(--line)}
+  .cart-row .l{font-weight:600;font-size:14px;line-height:1.3}
+  .cart-row .c{font-size:12px;color:var(--muted)}
+  .cart-send{background:var(--wa)!important;color:#fff!important;margin-top:14px}
+  .cart-clear{background:none;border:0;color:var(--muted);text-decoration:underline;margin-top:10px;width:100%;cursor:pointer;font-size:14px}
 
   /* About */
   .about{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
@@ -316,6 +331,8 @@
     .lb .x{position:fixed;top:10px;right:12px;background:rgba(0,0,0,.45);border-radius:50%;font-size:28px;z-index:2}
     .lb .meta,.lb-code,.lb-pur{padding:0 16px}
     .lb-ask{width:calc(100% - 32px);margin:12px 16px 0}
+    .lb-cart{margin:12px 16px 0}
+    .cart-fab{bottom:calc(76px + env(safe-area-inset-bottom))}
     .lb .nav-btn{width:38px;height:38px;opacity:.85}
   }
 </style>
@@ -401,14 +418,14 @@
         </div>
       </div>
     </div>
-    <div class="mylist" id="myList"><span>Your list: <b id="myListN">0 designs</b></span><span style="display:flex;gap:8px"><button class="btn btn-line" id="myListClear" type="button">Clear</button><button class="btn btn-gold" id="myListSend" type="button">Send on WhatsApp</button></span></div>
+    <div class="mylist" id="myList"><span>Your cart: <b id="myListN">0 items</b></span><span style="display:flex;gap:8px"><button class="btn btn-line" id="myListClear" type="button">Clear</button><button class="btn btn-gold" id="myListSend" type="button">Send on WhatsApp</button></span></div>
   </div>
 </section>
 <div class="pick" id="pick" aria-hidden="true">
   <div class="pick-top"><div><h3 id="pickTitle"></h3><div class="cat-note" id="pickSub" style="margin:2px 0 0"></div></div><button class="x" id="pickClose" aria-label="Close">&times;</button></div>
   <div class="pick-grid" id="pickGrid"></div>
 </div>
-<div class="pick-bar" id="pickBar"><span><b id="pickN">0</b> selected<br><button class="clr" id="pickClear" type="button">Clear list</button></span><button class="wa" id="pickSend" type="button">Send list on WhatsApp</button></div>
+<div class="pick-bar" id="pickBar"><span><b id="pickN">0</b> selected<br><button class="clr" id="pickClear" type="button">Empty cart</button></span><button class="wa" id="pickSend" type="button">Send cart on WhatsApp</button></div>
 
 <section id="about">
   <div class="wrap about">
@@ -491,7 +508,19 @@
     <div class="meta"><span id="lbCount"></span><a id="lbLink" target="_blank" rel="noopener"></a></div>
     <div class="lb-code" id="lbCode"></div>
     <div class="lb-pur" id="lbPur"></div>
+    <div class="lb-cart" id="lbCart"></div>
     <a class="btn lb-ask" id="lbAsk" target="_blank" rel="noopener">Ask about this design on WhatsApp</a>
+  </div>
+</div>
+<button class="cart-fab" id="cartFab" type="button" aria-label="Open cart">Cart <b id="cartFabN">0</b></button>
+<div class="sheet" id="cart" hidden>
+  <div class="box">
+    <button class="x2" id="cartClose" aria-label="Close">&times;</button>
+    <h3 style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600">Your cart</h3>
+    <div class="cat-note" style="margin:2px 0 6px">Send it to us on WhatsApp — we reply with weights and rates.</div>
+    <div id="cartRows"></div>
+    <button class="btn cart-send" id="cartSend" type="button">Send cart on WhatsApp</button>
+    <button class="cart-clear" id="cartClear" type="button">Empty cart</button>
   </div>
 </div>
 
@@ -598,26 +627,75 @@ document.addEventListener('click', async e => {
 
 /* ---------- catalogue picker: choose designs, send the list on WhatsApp ---------- */
 let CATALOGS = [], pickCat = null;
-const SEL = (() => { try { return JSON.parse(store.get('sjh_list') || '{}') || {}; } catch(e) { return {}; } })();   // code -> {q, cat}
+const SEL = (() => { try { return JSON.parse(store.get('sjh_list') || '{}') || {}; } catch(e) { return {}; } })();   // key -> {q, cat, label, thumb, link}
 const saveSel = () => { store.set('sjh_list', JSON.stringify(SEL)); renderSel(); };
 const selCount = () => Object.keys(SEL).length;
 function renderSel(){
-  const n = selCount(), label = n + ' design' + (n===1?'':'s');
+  const n = selCount(), label = n + ' item' + (n===1?'':'s');
   $('myList').classList.toggle('on', n > 0); $('myListN').textContent = label;
   $('pickN').textContent = label; $('pickBar').classList.toggle('on', n > 0);
+  $('cartFab').classList.toggle('on', n > 0); $('cartFabN').textContent = n;
+  if (!$('cart').hidden) renderCart();
 }
 function listMessage(){
   const groups = {};
-  Object.entries(SEL).forEach(([code, v]) => (groups[v.cat] = groups[v.cat] || []).push(`${code} ×${v.q}`));
+  Object.entries(SEL).forEach(([key, v]) => (groups[v.cat || 'Designs'] = groups[v.cat || 'Designs'] || []).push(`${v.label || key} ×${v.q}${v.link ? `\n   ${v.link}` : ''}`));
   const v = FEED && FEED.viewer;
-  return `Hi Sardar Jewellery House, I'd like these designs:\n\n` +
+  return `Hi Sardar Jewellery House, I'd like to order these:\n\n` +
     Object.entries(groups).map(([cat, lines]) => `*${cat}*\n${lines.join('\n')}`).join('\n\n') +
     `\n\n` + (v ? `Name: ${v.name || ''}\nShop: ${v.shop || ''}` : `Shop name: \nCity: `);
 }
 function sendList(){ if (!selCount()) return; window.open(waLink(listMessage()), '_blank'); }
-function clearList(){ if (!confirm('Clear your list?')) return; Object.keys(SEL).forEach(k => delete SEL[k]); saveSel(); pickCat && renderPick(); }
-$('myListSend').onclick = $('pickSend').onclick = sendList;
-$('myListClear').onclick = $('pickClear').onclick = clearList;
+function clearList(){ if (!confirm('Empty your cart?')) return; Object.keys(SEL).forEach(k => delete SEL[k]); saveSel(); pickCat && renderPick(); lbList.length && renderLbCart(); }
+$('myListSend').onclick = $('pickSend').onclick = $('cartSend').onclick = sendList;
+$('myListClear').onclick = $('pickClear').onclick = $('cartClear').onclick = clearList;
+
+/* any website item (ready stock, uploaded design, Instagram post) -> cart entry */
+function cartKey(it){ return it.source === 'elysian' ? it.id : (it.code || it.id); }
+function cartEntry(it){
+  const cat = it.source === 'elysian' ? 'Ready stock' : (it.cats && it.cats[0] ? catName(it.cats[0]) : 'Designs');
+  if (it.source === 'elysian') {
+    const name = it.caption || cat;
+    const facts = [(it.purity||[]).join(' '), it.weight ? `Net ${(+it.weight).toFixed(3)} g` : ''].filter(Boolean).join(' · ');
+    return { cat, label: [name, facts].filter(Boolean).join(' · '), thumb: it.thumbnail || it.src, link: it.thumbnail || it.src };
+  }
+  return { cat, label: it.code || `${cat} design`, thumb: it.thumbnail || it.src, link: it.code ? '' : (it.permalink || it.thumbnail || it.src) };
+}
+function changeQty(key, d, entry){
+  const q = Math.max(0, (SEL[key] ? SEL[key].q : 0) + d);
+  if (q) SEL[key] = { ...(SEL[key] || entry), q }; else delete SEL[key];
+  saveSel();
+}
+function renderLbCart(){
+  const it = lbList[lbI]; if (!it) return;
+  if (it.fromPicker) { $('lbCart').innerHTML = ''; return; }
+  const key = cartKey(it), s = SEL[key];
+  $('lbCart').innerHTML = s
+    ? `<div class="in">In cart <span class="qty"><button type="button" data-lq="-1">−</button><span>${s.q}</span><button type="button" data-lq="1">+</button></span></div>`
+    : `<button class="btn" type="button" data-lq="1">Add to cart</button>`;
+}
+$('lbCart').addEventListener('click', e => {
+  const b = e.target.closest('[data-lq]'); if (!b) return;
+  const it = lbList[lbI]; changeQty(cartKey(it), Number(b.dataset.lq), cartEntry(it)); renderLbCart();
+});
+
+function renderCart(){
+  const rows = Object.entries(SEL);
+  $('cartRows').innerHTML = rows.length ? rows.map(([key, v]) => `
+    <div class="cart-row" data-key="${esc(key)}">${v.thumb ? `<img src="${esc(v.thumb)}" alt="">` : '<span></span>'}
+      <div><div class="l">${esc(v.label || key)}</div><div class="c">${esc(v.cat || '')}</div></div>
+      <span class="qty"><button type="button" data-cq="-1">−</button><span>${v.q}</span><button type="button" data-cq="1">+</button></span></div>`).join('')
+    : '<p class="cat-note">Your cart is empty.</p>';
+}
+function openCart(){ renderCart(); $('cart').hidden = false; document.body.classList.add('locked'); }
+function closeCart(){ $('cart').hidden = true; if (!panelCat && !$('pick').classList.contains('open')) document.body.classList.remove('locked'); }
+$('cartFab').onclick = openCart; $('cartClose').onclick = closeCart;
+$('cart').addEventListener('click', e => { if (e.target === $('cart')) closeCart(); });
+$('cartRows').addEventListener('click', e => {
+  const b = e.target.closest('[data-cq]'); if (!b) return;
+  changeQty(b.closest('.cart-row').dataset.key, Number(b.dataset.cq));
+  pickCat && renderPick();
+});
 
 async function loadCatalogues(){
   try {
@@ -641,10 +719,10 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-pick
 function openPick(slug){
   pickCat = CATALOGS.find(c => c.slug === slug); if (!pickCat) return;
   renderPick();
-  $('pick').classList.add('open'); $('pick').setAttribute('aria-hidden','false'); document.body.classList.add('locked');
+  $('pick').classList.add('open'); $('pick').setAttribute('aria-hidden','false'); document.body.classList.add('locked','picking');
   history.pushState({ pick: 1 }, '');
 }
-function hidePick(){ $('pick').classList.remove('open'); $('pick').setAttribute('aria-hidden','true'); pickCat = null; if (!panelCat) document.body.classList.remove('locked'); }
+function hidePick(){ $('pick').classList.remove('open'); $('pick').setAttribute('aria-hidden','true'); pickCat = null; document.body.classList.remove('picking'); if (!panelCat) document.body.classList.remove('locked'); }
 function closePick(){ if (!$('pick').classList.contains('open')) return; if (history.state && history.state.pick) history.back(); else hidePick(); }
 window.addEventListener('popstate', e => { if ($('pick').classList.contains('open') && !(e.state && e.state.pick)) hidePick(); });
 $('pickClose').onclick = closePick;
@@ -662,10 +740,10 @@ function renderPick(){
 }
 $('pickGrid').addEventListener('click', e => {
   const z = e.target.closest('[data-zoom]');
-  if (z) { const list = pickCat.designs.map(d => ({ type:'image', src:d.src, thumbnail:d.thumb, code:d.code, purity:[] })); return openLB(list, +z.dataset.zoom); }
+  if (z) { const list = pickCat.designs.map(d => ({ type:'image', src:d.src, thumbnail:d.thumb, code:d.code, purity:[], fromPicker:true })); return openLB(list, +z.dataset.zoom); }
   const b = e.target.closest('[data-q]'); if (!b) return;
   const code = b.closest('.pt').dataset.code, cur = SEL[code] ? SEL[code].q : 0, q = Math.max(0, cur + Number(b.dataset.q));
-  if (q) SEL[code] = { q, cat: pickCat.name }; else delete SEL[code];
+  if (q) SEL[code] = { ...(SEL[code] || {}), q, cat: pickCat.name, label: code, thumb: (pickCat.designs.find(d => d.code === code) || {}).thumb || '' }; else delete SEL[code];
   saveSel(); renderPick();
 });
 function renderCatalogues(){
@@ -853,6 +931,7 @@ function showLB(){
   $('lbAsk').href = waLink(`Hi Sardar Jewellery House, I'm a retailer interested in ${what}. Please share rates. Shop name: , City: `);
   $('lbAsk').textContent = ely ? 'Ask about this piece on WhatsApp' : it.code ? `Ask about ${it.code} on WhatsApp` : 'Ask about this design on WhatsApp';
   $('lbPrev').style.display = $('lbNext').style.display = lbList.length>1 ? '' : 'none';
+  renderLbCart();
 }
 function hideLB(){ $('lb').classList.remove('open'); $('lbMedia').innerHTML=''; if(!panelCat) document.body.classList.remove('locked'); }
 function closeLB(){ if (history.state && history.state.lb) history.back(); else hideLB(); }
@@ -871,6 +950,7 @@ $('lb').addEventListener('touchend', e=>{
 document.addEventListener('keydown', e=>{
   if ($('lb').classList.contains('open')){ if (e.key==='Escape') closeLB(); if (e.key==='ArrowLeft') $('lbPrev').click(); if (e.key==='ArrowRight') $('lbNext').click(); }
   else if (e.key==='Escape' && !$('auth').hidden) closeAuth();
+  else if (e.key==='Escape' && !$('cart').hidden) closeCart();
   else if (e.key==='Escape' && panelCat) $('panelBack').click();
 });
 
