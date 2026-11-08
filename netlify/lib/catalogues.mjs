@@ -15,6 +15,21 @@
 
 import { cloudEnv, signParams } from "./cloud.mjs";
 import { db, accountsReady } from "./auth.mjs";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+
+/* Signed, short-lived links to our own /api/catalogue for stored PDFs (served as real .pdf files). */
+const fileSecret = () => createHash("sha256").update("sjh-file|" + (process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_KEY || "")).digest();
+const fileSig = (id, name, e) => createHmac("sha256", fileSecret()).update(`${id}|${name}|${e}`).digest("base64url");
+export function pdfLink(publicId, filename, minutes = 10) {
+  const e = Date.now() + minutes * 60e3;
+  return `/api/catalogue?file=${encodeURIComponent(publicId)}&name=${encodeURIComponent(filename)}&e=${e}&s=${fileSig(publicId, filename, e)}`;
+}
+export function checkPdfLink(params) {
+  const id = params.get("file") || "", name = params.get("name") || "", e = Number(params.get("e") || 0), s = params.get("s") || "";
+  if (!id.startsWith("catalogues/") || !(e > Date.now())) return null;
+  const want = fileSig(id, name, e);
+  return s.length === want.length && timingSafeEqual(Buffer.from(s), Buffer.from(want)) ? { id, name } : null;
+}
 
 export const TAGS = { cat: "sjh-catalogue", pdf: "sjh-catalogue-pdf", tile: "sjh-tile" };
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;

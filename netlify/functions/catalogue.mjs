@@ -11,7 +11,7 @@
 
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
-import { getCatalogue, downloadUrl } from "../lib/catalogues.mjs";
+import { getCatalogue, downloadUrl, checkPdfLink } from "../lib/catalogues.mjs";
 import { cloudEnv } from "../lib/cloud.mjs";
 
 const CATALOGUES = {};          // built-in catalogues (none now; all are made in Admin → Catalogues)
@@ -46,12 +46,12 @@ async function findCatalogue(slug) {
            preview: c.preview ? `/api/catalogue?preview=${encodeURIComponent(slug)}` : "/#catalogues" };
 }
 
-async function streamPdf(publicId, title) {
+async function streamPdf(publicId, title, download = false) {
   const r = await fetch(downloadUrl(publicId, 5));
   if (!r.ok) return new Response("Catalogue not available", { status: 502 });
   return new Response(r.body, { headers: {
     "Content-Type": "application/pdf",
-    "Content-Disposition": `inline; filename="${title.replace(/"/g, "")}"`,
+    "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${title.replace(/"/g, "")}"`,
     "Cache-Control": "private, no-store",
     "X-Robots-Tag": "noindex"
   } });
@@ -72,6 +72,11 @@ export default async (req, ctx) => {
     return out({ url: `/api/catalogue?f=${encodeURIComponent(body.name)}&e=${e}&s=${sign(body.name, e)}` });
   }
 
+  if (url.searchParams.has("file")) {                       // admin download link (signed, 10 minutes)
+    const f = checkPdfLink(url.searchParams);
+    if (!f) return new Response("This download link has expired. Go back to the admin page and tap the button again.", { status: 403 });
+    return streamPdf(f.id, f.name, true);
+  }
   const previewSlug = url.searchParams.get("preview");
   if (previewSlug) {
     const c = await getCatalogue(previewSlug).catch(() => null);

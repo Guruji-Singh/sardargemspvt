@@ -24,7 +24,7 @@ import { TAG, cloudEnv, signParams, listProducts } from "../lib/cloud.mjs";
 import { db, accountsReady, hashPassword } from "../lib/auth.mjs";
 import { PURITIES } from "../lib/catalog.mjs";
 import { RULES, clientIp, lockedFor, recordFail, clearFails, lockedMsg } from "../lib/limit.mjs";
-import { TAGS, SLUG as CAT_SLUG, cleanCtx, saveTileRows, listCatalogues, getCatalogue, listTiles, findCodes, downloadUrl, signUpload, setContext, destroy, deleteCatalogue, catalogueContext } from "../lib/catalogues.mjs";
+import { TAGS, SLUG as CAT_SLUG, cleanCtx, saveTileRows, pdfLink, listCatalogues, getCatalogue, listTiles, findCodes, downloadUrl, signUpload, setContext, destroy, deleteCatalogue, catalogueContext } from "../lib/catalogues.mjs";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 const tileContext = t => `cat=${t.cat}|code=${cleanCtx(t.code)}|orig=${cleanCtx(t.orig)}|page=${Number(t.page) || 0}|n=${Number(t.n) || 0}`;
@@ -186,7 +186,8 @@ export default async (req) => {
       if (!cat) return out({ error: "Catalogue not found" }, 404);
       const id = { supplier: cat.supplier, branded: cat.branded, preview: cat.preview }[body.which];
       if (!id) return out({ error: "That file is not there" }, 404);
-      return out({ url: downloadUrl(id, 10) });
+      const label = { supplier: `Supplier - ${cat.name}${cat.sprefix ? ` (${cat.sprefix})` : ""}`, branded: `Sardar Gems - ${cat.name}`, preview: `Sardar Gems - ${cat.name} (preview)` }[body.which];
+      return out({ url: pdfLink(id, `${label.replace(/[^\w\s().&-]/g, "").trim()}.pdf`) });
     }
 
     case "lookup": {
