@@ -9,7 +9,7 @@
 
 const CAT_CONTACT = "Call / WhatsApp: +91 98773 13252  |  +91 62831 32334";
 const CAT_SITE = "www.sardargems.com";
-const MAX_SUPPLIER_MB = 10;          // Cloudinary free plan limit for raw files
+const MAX_SUPPLIER_MB = 200;         // PDFs are kept on Hostinger (sjh-website/files.php)
 const LIBS = {
   pdfjs: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
   pdfWorker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
@@ -196,6 +196,20 @@ async function cldUpload(sig, file, filename, onProgress){
   });
 }
 
+/** Upload a PDF to Hostinger (sjh-website/files.php) with the signed link from the server. */
+function hostUpload(url, file, filename, onProgress){
+  const fd = new FormData(); fd.append('file', file, filename);
+  return new Promise((ok, no) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url);
+    if (onProgress) x.upload.onprogress = e => e.lengthComputable && onProgress(e.loaded/e.total);
+    x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch(e){}
+      (x.status < 300 && j.ok) ? ok(j) : no(new Error(j.error || (x.status === 413 ? 'This PDF is bigger than the hosting upload limit (hPanel → PHP Configuration → upload_max_filesize / post_max_size).' : 'PDF upload failed (' + x.status + ')'))); };
+    x.onerror = () => no(new Error('Could not reach the PDF storage (office.sardargems.com). Check that files.php is uploaded.'));
+    x.send(fd);
+  });
+}
+
 /* ---------------- UI ---------------- */
 
 function catStatus(msg, cls){ const el = $('catProg'); el.textContent = msg; el.className = 'st' + (cls ? ' ' + cls : ''); }
@@ -216,7 +230,7 @@ $('catProcess').onclick = async () => {
   $('catErr').textContent = '';
   if (!f) return $('catErr').textContent = 'Choose the supplier PDF first';
   if (!/pdf$/i.test(f.type) && !/\.pdf$/i.test(f.name)) return $('catErr').textContent = 'That is not a PDF file';
-  if (f.size > MAX_SUPPLIER_MB*1048576) return $('catErr').textContent = `This PDF is ${mb(f.size)}. The limit is ${MAX_SUPPLIER_MB} MB — ask the supplier for a smaller PDF, or compress it (e.g. ilovepdf.com → Compress PDF) and try again.`;
+  if (f.size > MAX_SUPPLIER_MB*1048576) return $('catErr').textContent = `This PDF is ${mb(f.size)}. The limit is ${MAX_SUPPLIER_MB} MB — compress it first (e.g. ilovepdf.com → Compress PDF).`;
   if (!name) return $('catErr').textContent = 'Give the catalogue a name';
   if (!prefix) return $('catErr').textContent = 'Enter the code prefix, e.g. SJH-DE';
   const slug = catSlug(name);
@@ -273,21 +287,20 @@ $('catSave').onclick = async () => {
   const { slug, name, prefix, sprefix, file } = DRAFT;
   try {
     catStatus('Saving the supplier PDF…');
-    const s1 = await api({ action:'cat-sign', kind:'supplier', slug, name, prefix, sprefix, count: kept.length });
-    await cldUpload(s1, file, 'supplier.dat', p => catStatus(`Saving the supplier PDF… ${Math.round(p*100)}%`));
-    const dir = s1.dir;
+    const c = await api({ action:'cat-create', slug, name, prefix, sprefix, count: kept.length });
+    await hostUpload(c.supplierUrl, file, 'supplier.pdf', p => catStatus(`Saving the supplier PDF… ${Math.round(p*100)}%`));
     for (let i = 0; i < kept.length; i++) {
       const t = kept[i];
       catStatus(`Uploading designs… ${i+1} of ${kept.length}`);
-      const s = await api({ action:'cat-sign', kind:'tile', slug, dir, n: t.n, code: t.code, orig: t.orig, page: t.page });
+      const s = await api({ action:'cat-sign', kind:'tile', slug, n: t.n, code: t.code, orig: t.orig, page: t.page });
       const up = await cldUpload(s, t.blob, `${t.code}.jpg`);
       await api({ action:'tile-add', slug, publicId: up.public_id, code: t.code, orig: t.orig, page: t.page, n: t.n });
     }
     catStatus('Making the branded PDF…');
     const full = await makeBrandedPdf(name, kept), prev = await makeBrandedPdf(name, kept, true);
-    const sb = await api({ action:'cat-sign', kind:'branded', slug, dir }); await cldUpload(sb, full, 'branded.dat', p => catStatus(`Saving the branded PDF… ${Math.round(p*100)}%`));
-    const sp = await api({ action:'cat-sign', kind:'preview', slug, dir }); await cldUpload(sp, prev, 'preview.dat');
-    await api({ action:'cat-save', slug, count: kept.length, branded: sb.public_id, preview: sp.public_id });
+    const sb = await api({ action:'cat-sign', kind:'branded', slug }); await hostUpload(sb.url, full, 'branded.pdf', p => catStatus(`Saving the branded PDF… ${Math.round(p*100)}%`));
+    const sp = await api({ action:'cat-sign', kind:'preview', slug }); await hostUpload(sp.url, prev, 'preview.pdf');
+    await api({ action:'cat-save', slug, count: kept.length, branded: sb.ref, preview: sp.ref });
     catStatus('Checking…');
     const check = await api({ action:'cat-tiles', slug });
     if ((check.tiles || []).length < kept.length) throw new Error(`Only ${(check.tiles||[]).length} of ${kept.length} designs were saved. Delete this catalogue and try again.`);
@@ -296,7 +309,8 @@ $('catSave').onclick = async () => {
     DRAFT = null; renderDraft(); $('catFile').value = ''; $('catFileName').textContent = ''; $('catName').value = ''; $('catSPrefix').value = ''; delete $('catPrefix').dataset.touched;
     await loadCatalogues();
   } catch(e) {
-    catStatus('Stopped: ' + e.message, 'bad');
+    catStatus('Stopped: ' + e.message + ' — the unfinished catalogue is listed below as Draft; delete it and try again.', 'bad');
+    loadCatalogues();
     toast(e.message);
   }
   $('catSave').disabled = false; $('catDiscard').disabled = false;

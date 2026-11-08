@@ -11,8 +11,9 @@
 //   { action:"reset-password", id, password }                    -> sets a new password for a retailer
 //   Catalogues (see netlify/lib/catalogues.mjs):
 //   { action:"cat-list" } / { action:"cat-tiles", slug }          -> catalogues / one catalogue's designs
-//   { action:"cat-sign", kind:"supplier"|"tile"|"branded"|"preview", slug, ... } -> signature for a direct upload
-//   { action:"cat-save", slug, name?, status?, count?, branded?, preview? }       -> updates a catalogue
+//   { action:"cat-create", slug, name, prefix, sprefix, count }  -> new draft catalogue + where to upload the supplier PDF
+//   { action:"cat-sign", kind:"tile"|"branded"|"preview"|"supplier", slug, ... } -> where to upload (Cloudinary / Hostinger)
+//   { action:"cat-save", slug, name?, status?, count?, supplier?, branded?, preview? } -> updates a catalogue
 //   { action:"tile-save", publicId, cat, code, orig, page, n } / { action:"tile-delete", publicId }
 //   { action:"cat-delete", slug }                                -> deletes a catalogue and all its files
 //   { action:"cat-download", slug, which:"supplier"|"branded"|"preview" } -> 10-minute download link
@@ -24,7 +25,7 @@ import { TAG, cloudEnv, signParams, listProducts } from "../lib/cloud.mjs";
 import { db, accountsReady, hashPassword } from "../lib/auth.mjs";
 import { PURITIES } from "../lib/catalog.mjs";
 import { RULES, clientIp, lockedFor, recordFail, clearFails, lockedMsg } from "../lib/limit.mjs";
-import { TAGS, SLUG as CAT_SLUG, cleanCtx, saveTileRows, pdfLink, listCatalogues, getCatalogue, listTiles, findCodes, downloadUrl, signUpload, setContext, destroy, deleteCatalogue, catalogueContext } from "../lib/catalogues.mjs";
+import { TAGS, SLUG as CAT_SLUG, cleanCtx, saveTileRows, pdfUrl, hostPutUrl, hostConfigured, isHost, listCatalogues, getCatalogue, createCatalogue, updateCatalogue, listTiles, findCodes, signUpload, setContext, destroy, deleteCatalogue } from "../lib/catalogues.mjs";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 const tileContext = t => `cat=${t.cat}|code=${cleanCtx(t.code)}|orig=${cleanCtx(t.orig)}|page=${Number(t.page) || 0}|n=${Number(t.n) || 0}`;
@@ -126,36 +127,47 @@ export default async (req) => {
 
     case "cat-tiles": return out({ tiles: await listTiles(await getCatalogue(String(body.slug || "")), { sync: true }) });
 
-    case "cat-sign": {
+    case "cat-create": {
       const slug = String(body.slug || "");
       if (!CAT_SLUG.test(slug)) return out({ error: "Bad catalogue name" }, 400);
+      if (!hostConfigured()) return out({ error: "PDF storage is not set up (STOCK_API_URL / STOCK_API_KEY missing in the hosting settings)" }, 500);
+      if (await getCatalogue(slug)) return out({ error: "A catalogue with this name already exists" }, 409);
+      const dir = `${slug}-${rand()}`;
+      const put = hostPutUrl(dir, `supplier-${rand()}`);
+      await createCatalogue({ slug, dir, name: cleanCtx(body.name) || slug, prefix: cleanCtx(body.prefix).toUpperCase(), sprefix: cleanCtx(body.sprefix),
+                              status: "draft", count: Number(body.count) || 0, supplier: put.ref });
+      return out({ dir, supplierUrl: put.url });
+    }
+
+    case "cat-sign": {
+      const cat = await getCatalogue(String(body.slug || ""));
+      if (!cat) return out({ error: "Catalogue not found" }, 404);
       const kind = String(body.kind || "");
-      if (kind === "supplier") {
-        if (await getCatalogue(slug)) return out({ error: "A catalogue with this name already exists" }, 409);
-        const dir = `${slug}-${rand()}`;
-        const meta = { name: body.name, slug, dir, prefix: body.prefix, sprefix: body.sprefix, status: "draft", count: body.count };
-        return out({ dir, ...signUpload({ resourceType: "raw", authenticated: true, publicId: `catalogues/${dir}/supplier-${rand()}.dat`, tags: TAGS.cat, context: catalogueContext(meta) }) });
-      }
-      const dir = String(body.dir || "");
-      if (!dir.startsWith(slug + "-") || !/^[a-z0-9-]{3,60}$/.test(dir)) return out({ error: "Bad catalogue folder" }, 400);
       if (kind === "tile") {
         const n = Number(body.n) || 0;
-        const t = { cat: slug, code: body.code, orig: body.orig, page: body.page, n };
-        return out(signUpload({ resourceType: "image", publicId: `catalogues/${dir}/${String(n).padStart(3, "0")}-${rand()}`, tags: TAGS.tile, context: tileContext(t) }));
+        const t = { cat: cat.slug, code: body.code, orig: body.orig, page: body.page, n };
+        return out(signUpload({ resourceType: "image", publicId: `catalogues/${cat.dir}/${String(n).padStart(3, "0")}-${rand()}`, tags: TAGS.tile, context: tileContext(t) }));
       }
-      if (kind === "branded" || kind === "preview")
-        return out(signUpload({ resourceType: "raw", authenticated: true, publicId: `catalogues/${dir}/${kind}-${rand()}.dat`, tags: TAGS.pdf, context: `cat=${slug}|kind=${kind}` }));
+      if (kind === "branded" || kind === "preview" || kind === "supplier") {
+        const put = hostPutUrl(cat.dir, `${kind}-${rand()}`);
+        return out({ url: put.url, ref: put.ref });
+      }
       return out({ error: "Bad kind" }, 400);
     }
 
     case "cat-save": {
       const cat = await getCatalogue(String(body.slug || ""));
       if (!cat) return out({ error: "Catalogue not found" }, 404);
-      const next = { ...cat };
-      for (const k of ["name", "status", "count", "branded", "preview"]) if (body[k] !== undefined) next[k] = body[k];
-      for (const k of ["branded", "preview"]) if (next[k] && !String(next[k]).startsWith(`catalogues/${cat.dir}/`)) return out({ error: "Bad file" }, 400);
-      await setContext({ resourceType: "raw", type: "authenticated", publicId: cat.supplier, context: catalogueContext(next) });
-      return out({ ok: true, catalogue: next });
+      const fields = {};
+      if (body.name !== undefined) fields.name = cleanCtx(body.name) || cat.name;
+      if (body.status !== undefined) fields.status = body.status === "published" ? "published" : "draft";
+      if (body.count !== undefined) fields.count = Number(body.count) || 0;
+      for (const k of ["supplier", "branded", "preview"]) if (body[k] !== undefined) {
+        if (!String(body[k]).startsWith(`host:catalogues/${cat.dir}/`)) return out({ error: "Bad file" }, 400);
+        fields[k] = String(body[k]);
+      }
+      await updateCatalogue(cat.slug, fields);
+      return out({ ok: true, catalogue: { ...cat, ...fields } });
     }
 
     case "tile-save":
@@ -184,10 +196,10 @@ export default async (req) => {
     case "cat-download": {
       const cat = await getCatalogue(String(body.slug || ""));
       if (!cat) return out({ error: "Catalogue not found" }, 404);
-      const id = { supplier: cat.supplier, branded: cat.branded, preview: cat.preview }[body.which];
-      if (!id) return out({ error: "That file is not there" }, 404);
+      const ref = { supplier: cat.supplier, branded: cat.branded, preview: cat.preview }[body.which];
+      if (!ref) return out({ error: "That file is not there" }, 404);
       const label = { supplier: `Supplier - ${cat.name}${cat.sprefix ? ` (${cat.sprefix})` : ""}`, branded: `Sardar Gems - ${cat.name}`, preview: `Sardar Gems - ${cat.name} (preview)` }[body.which];
-      return out({ url: pdfLink(id, `${label.replace(/[^\w\s().&-]/g, "").trim()}.pdf`) });
+      return out({ url: pdfUrl(ref, `${label.replace(/[^\w\s().&-]/g, "").trim()}.pdf`, { download: true }) });
     }
 
     case "lookup": {

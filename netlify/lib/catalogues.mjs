@@ -1,17 +1,13 @@
 // Catalogues made from supplier PDFs (admin page → Catalogues tab).
 //
-// Everything is stored in Cloudinary, under catalogues/<dir>/ (dir = slug + random part, so a deleted
-// catalogue's background clean-up can never touch a new one with the same name):
-//   supplier-<rand>.dat   the supplier's original PDF        raw, authenticated   tag sjh-catalogue
-//   branded-<rand>.dat    our branded PDF (all designs)      raw, authenticated   tag sjh-catalogue-pdf
-//   preview-<rand>.dat    our branded PDF, first 2 pages     raw, authenticated   tag sjh-catalogue-pdf
-//   <nn>-<rand>           one design tile (JPEG)             image, upload        tag sjh-tile
-// PDFs are stored as .dat and always served through our own /api/catalogue, never straight from Cloudinary.
-//
-// The supplier PDF's context holds the catalogue's details:
-//   name, slug, prefix (our code prefix, e.g. SJH-DE), sprefix (supplier's, e.g. DCLE), status (draft|published),
-//   count, branded, preview  (public_ids of the branded PDFs)
-// Each tile's context: cat (slug), code (SJH-DE-03), orig (DCLE 3), page (3), n (3)
+// Where things are kept:
+//   Supabase table catalogues        one row per catalogue: name, slug, dir, prefixes, status, count and where its
+//                                    PDFs are (supplier / branded / preview)
+//   Supabase table catalogue_tiles   one row per design: Cloudinary public_id, our code, supplier code, page, number
+//   Cloudinary  catalogues/<dir>/<nn>-<rand>   the design pictures (fast, resized on the fly)
+//   Hostinger   sjh-website/store/catalogues/<dir>/*.pdf   the PDFs (private; reached with signed links to files.php)
+// A PDF location is "host:catalogues/<dir>/<name>.pdf" (Hostinger) or a Cloudinary raw public_id (older catalogues).
+// dir = slug + random part, so a deleted catalogue's clean-up can never touch a new one with the same name.
 
 import { cloudEnv, signParams } from "./cloud.mjs";
 import { db, accountsReady } from "./auth.mjs";
@@ -29,6 +25,32 @@ export function checkPdfLink(params) {
   if (!id.startsWith("catalogues/") || !(e > Date.now())) return null;
   const want = fileSig(id, name, e);
   return s.length === want.length && timingSafeEqual(Buffer.from(s), Buffer.from(want)) ? { id, name } : null;
+}
+
+/* ---------- Hostinger PDF storage (sjh-website/files.php) ---------- */
+export const isHost = ref => String(ref || "").startsWith("host:");
+const hostPath = ref => String(ref).slice(5);
+export function hostConfigured() { return !!(process.env.STOCK_API_URL && process.env.STOCK_API_KEY); }
+function hostUrl(payload, minutes = 15) {
+  if (!hostConfigured()) throw new Error("PDF storage not set up (STOCK_API_URL / STOCK_API_KEY)");
+  const body = Buffer.from(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + minutes * 60 })).toString("base64url");
+  const sig = createHmac("sha256", process.env.STOCK_API_KEY).update(body).digest("base64url");
+  return new URL(`files.php?t=${body}.${sig}`, process.env.STOCK_API_URL).href;
+}
+/** Where the admin page uploads a PDF to (POST, multipart field "file"). */
+export function hostPutUrl(dir, name) {
+  const path = `catalogues/${dir}/${name}.pdf`;
+  return { url: hostUrl({ act: "put", path }, 60), ref: `host:${path}` };
+}
+/** Link that opens (or downloads) a stored PDF, wherever it is kept. Relative for Cloudinary, absolute for Hostinger. */
+export function pdfUrl(ref, filename, { download = false, minutes = 10 } = {}) {
+  if (!ref) return "";
+  if (isHost(ref)) return hostUrl({ act: "get", path: hostPath(ref), name: filename, dl: download ? 1 : 0 }, minutes);
+  return pdfLink(ref, filename, minutes);
+}
+async function hostDeleteDir(dir) {
+  const r = await fetch(hostUrl({ act: "del", path: `catalogues/${dir}/` }, 5), { method: "POST" });
+  if (!r.ok) throw new Error(`PDF storage ${r.status}`);
 }
 
 export const TAGS = { cat: "sjh-catalogue", pdf: "sjh-catalogue-pdf", tile: "sjh-tile" };
@@ -90,16 +112,44 @@ async function listByPrefix(path, prefix) {
   return all;
 }
 
+const CAT_COLS = "slug,dir,name,prefix,sprefix,status,count,supplier,branded,preview,created_at";
+const rowToCat = r => ({ ...r, count: Number(r.count || 0), status: r.status === "published" ? "published" : "draft", created: r.created_at });
+let legacyChecked = 0;
+
+/** Catalogues made before the database table existed live only in Cloudinary; copy them into the table once. */
+async function importLegacy(have) {
+  if (Date.now() - legacyChecked < 10 * 60e3 || !cloudEnv()) return [];
+  legacyChecked = Date.now();
+  const old = (await listByPrefix("raw/authenticated", "catalogues/"))
+    .filter(r => (r.tags || []).includes(TAGS.cat)).map(catalogueFromResource)
+    .filter(c => c.slug && SLUG.test(c.slug) && !have.has(c.slug));
+  if (!old.length) return [];
+  const rows = old.map(c => ({ slug: c.slug, dir: c.dir, name: c.name, prefix: c.prefix, sprefix: c.sprefix, status: c.status,
+    count: c.count, supplier: c.supplier, branded: c.branded, preview: c.preview, created_at: c.created }));
+  await db("catalogues?on_conflict=slug", { method: "POST", body: rows, prefer: "resolution=ignore-duplicates,return=minimal" });
+  return rows.map(rowToCat);
+}
+
 export async function listCatalogues() {
-  return (await listByPrefix("raw/authenticated", "catalogues/"))
-    .filter(r => (r.tags || []).includes(TAGS.cat))
-    .map(catalogueFromResource).filter(c => c.slug && SLUG.test(c.slug))
-    .sort((a, b) => String(b.created).localeCompare(String(a.created)));
+  if (!accountsReady()) throw new Error("Database not configured");
+  let cats = (await db(`catalogues?select=${CAT_COLS}&order=created_at.desc`)).map(rowToCat);
+  try { cats = cats.concat(await importLegacy(new Set(cats.map(c => c.slug)))); } catch (e) { console.warn("legacy catalogues", e.message); }
+  return cats;
 }
 
 export async function getCatalogue(slug) {
-  if (!SLUG.test(slug)) return null;
+  if (!SLUG.test(String(slug || ""))) return null;
+  const rows = await db(`catalogues?select=${CAT_COLS}&slug=eq.${encodeURIComponent(slug)}`);
+  if (rows.length) return rowToCat(rows[0]);
   return (await listCatalogues()).find(c => c.slug === slug) || null;
+}
+
+export async function createCatalogue(c) {
+  await db("catalogues", { method: "POST", body: [c], prefer: "return=minimal" });
+}
+
+export async function updateCatalogue(slug, fields) {
+  await db(`catalogues?slug=eq.${encodeURIComponent(slug)}`, { method: "PATCH", body: fields, prefer: "return=minimal" });
 }
 
 /* The list of designs is kept in the database (table catalogue_tiles), written by the admin page right after
@@ -217,7 +267,11 @@ export async function deleteCatalogue(cat) {
   const env = cloudEnv();
   if (!cat || !cat.dir) throw new Error("Bad catalogue");
   const prefix = encodeURIComponent(`catalogues/${cat.dir}/`);
-  if (accountsReady()) await db(`catalogue_tiles?public_id=like.${encodeURIComponent(`catalogues/${cat.dir}/*`)}`, { method: "DELETE" }).catch(e => console.warn("delete tiles", e.message));
+  if ([cat.supplier, cat.branded, cat.preview].some(isHost)) await hostDeleteDir(cat.dir);
+  if (accountsReady()) {
+    await db(`catalogue_tiles?public_id=like.${encodeURIComponent(`catalogues/${cat.dir}/*`)}`, { method: "DELETE" }).catch(e => console.warn("delete tiles", e.message));
+    await db(`catalogues?slug=eq.${encodeURIComponent(cat.slug)}`, { method: "DELETE" });
+  }
   for (const path of ["image/upload", "raw/authenticated"]) {
     for (let i = 0; i < 5; i++) {
       const r = await fetch(`https://api.cloudinary.com/v1_1/${env.cloud}/resources/${path}?prefix=${prefix}&invalidate=true`, { method: "DELETE", headers: auth(env) });
