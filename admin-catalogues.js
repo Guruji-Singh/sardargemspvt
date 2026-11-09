@@ -212,7 +212,14 @@ function hostUpload(url, file, filename, onProgress){
 
 /* ---------------- UI ---------------- */
 
-function catStatus(msg, cls){ const el = $('catProg'); el.textContent = msg; el.className = 'st' + (cls ? ' ' + cls : ''); }
+function catStatus(msg, cls){
+  // shown at the top of the upload box and again right under the Save button, where the user is looking
+  for (const id of ['catProg', 'catSaveProg']) { const el = $(id); if (el) { el.textContent = msg; el.className = 'st' + (cls ? ' ' + cls : ''); } }
+}
+function saveBar(done, total){
+  const b = $('catSaveBar'); if (!b) return;
+  b.hidden = total == null; if (total) b.firstElementChild.style.width = Math.round(100 * done / total) + '%';
+}
 
 $('catFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
@@ -284,36 +291,57 @@ $('catSave').onclick = async () => {
   const kept = DRAFT.tiles.filter(t => t.keep);
   if (!kept.length) return toast('Tick at least one design');
   $('catSave').disabled = true; $('catDiscard').disabled = true;
+  const label = $('catSave').textContent; $('catSave').textContent = 'Saving…';
   const { slug, name, prefix, sprefix, file } = DRAFT;
+  const steps = kept.length + 3; let doneSteps = 0; saveBar(0, steps);
   try {
-    catStatus('Saving the supplier PDF…');
+    catStatus('Saving the supplier PDF… keep this screen open');
     const c = await api({ action:'cat-create', slug, name, prefix, sprefix, count: kept.length });
-    await hostUpload(c.supplierUrl, file, 'supplier.pdf', p => catStatus(`Saving the supplier PDF… ${Math.round(p*100)}%`));
-    for (let i = 0; i < kept.length; i++) {
-      const t = kept[i];
-      catStatus(`Uploading designs… ${i+1} of ${kept.length}`);
-      const s = await api({ action:'cat-sign', kind:'tile', slug, n: t.n, code: t.code, orig: t.orig, page: t.page });
-      const up = await cldUpload(s, t.blob, `${t.code}.jpg`);
-      await api({ action:'tile-add', slug, publicId: up.public_id, code: t.code, orig: t.orig, page: t.page, n: t.n });
-    }
+    await hostUpload(c.supplierUrl, file, 'supplier.pdf', p => catStatus(`Saving the supplier PDF… ${Math.round(p*100)}% — keep this screen open`));
+    saveBar(++doneSteps, steps);
+    // designs go up 4 at a time (each one is retried once if the connection drops)
+    let next = 0, uploaded = 0;
+    const one = async t => {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const s = await api({ action:'cat-sign', kind:'tile', slug, n: t.n, code: t.code, orig: t.orig, page: t.page });
+          const up = await cldUpload(s, t.blob, `${t.code}.jpg`);
+          await api({ action:'tile-add', slug, publicId: up.public_id, code: t.code, orig: t.orig, page: t.page, n: t.n });
+          return;
+        } catch (e) { if (attempt >= 2) throw e; await new Promise(r => setTimeout(r, 2000)); }
+      }
+    };
+    const worker = async () => {
+      while (next < kept.length) {
+        const t = kept[next++];
+        await one(t);
+        uploaded++; saveBar(++doneSteps, steps);
+        catStatus(`Uploading designs… ${uploaded} of ${kept.length} — keep this screen open`);
+      }
+    };
+    catStatus(`Uploading designs… 0 of ${kept.length} — keep this screen open`);
+    await Promise.all([worker(), worker(), worker(), worker()]);
     catStatus('Making the branded PDF…');
     const full = await makeBrandedPdf(name, kept), prev = await makeBrandedPdf(name, kept, true);
     const sb = await api({ action:'cat-sign', kind:'branded', slug }); await hostUpload(sb.url, full, 'branded.pdf', p => catStatus(`Saving the branded PDF… ${Math.round(p*100)}%`));
     const sp = await api({ action:'cat-sign', kind:'preview', slug }); await hostUpload(sp.url, prev, 'preview.pdf');
+    saveBar(++doneSteps, steps);
     await api({ action:'cat-save', slug, count: kept.length, branded: sb.ref, preview: sp.ref });
     catStatus('Checking…');
     const check = await api({ action:'cat-tiles', slug });
     if ((check.tiles || []).length < kept.length) throw new Error(`Only ${(check.tiles||[]).length} of ${kept.length} designs were saved. Delete this catalogue and try again.`);
-    catStatus('Saved. Check it below and tap Publish to show it on the website.', 'ok');
+    saveBar(steps, steps);
+    catStatus('Saved ✓ Now tap Publish on it under "Your catalogues" to show it on the website.', 'ok');
     toast('Catalogue saved');
-    DRAFT = null; renderDraft(); $('catFile').value = ''; $('catFileName').textContent = ''; $('catName').value = ''; $('catSPrefix').value = ''; delete $('catPrefix').dataset.touched;
+    DRAFT = null; renderDraft(); saveBar(); $('catFile').value = ''; $('catFileName').textContent = ''; $('catName').value = ''; $('catSPrefix').value = ''; delete $('catPrefix').dataset.touched;
     await loadCatalogues();
   } catch(e) {
     catStatus('Stopped: ' + e.message + ' — the unfinished catalogue is listed below as Draft; delete it and try again.', 'bad');
     loadCatalogues();
     toast(e.message);
   }
-  $('catSave').disabled = false; $('catDiscard').disabled = false;
+  $('catSave').disabled = false; $('catDiscard').disabled = false; $('catSave').textContent = label;
+  if (!DRAFT) $('catProg').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 async function loadCatalogues(){
