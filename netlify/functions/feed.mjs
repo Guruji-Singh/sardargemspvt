@@ -9,6 +9,7 @@ import { listProducts } from "../lib/cloud.mjs";
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
 import MEDIA from "../lib/media-list.mjs";
 import { stockItems } from "../lib/elysian.mjs";
+import instagram from "./instagram.mjs";
 
 const GUEST_LIMIT = 10;
 const cache = { products: { at: 0, data: [] }, ig: { at: 0, data: [] }, stock: { at: 0, data: [] } };
@@ -26,7 +27,7 @@ export default async (req, ctx) => {
   const [products, igRaw, stock, viewer] = await Promise.all([
     cached("products", 60e3, listProducts),
     cached("ig", 300e3, async () => {
-      const r = await fetch(origin + "/api/instagram");          // CDN-cached Instagram function
+      const r = await instagram();                                 // call directly (a Cloudflare Worker cannot fetch its own address)
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || r.status);
       return j.items || [];
