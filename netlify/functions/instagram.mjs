@@ -6,7 +6,7 @@ const MAX_ITEMS = 150;
 const MAX_PAGES = 6;
 
 export default async () => {
-  const token = process.env.INSTAGRAM_TOKEN;
+  const token = (process.env.INSTAGRAM_TOKEN || "").trim().replace(/^["']+|["']+$/g, "").replace(/\s+/g, "");
   if (!token) return Response.json({ error: "INSTAGRAM_TOKEN not set" }, { status: 500 });
 
   let url = `https://graph.instagram.com/v21.0/me/media?fields=${FIELDS}&limit=50&access_token=${token}`;
