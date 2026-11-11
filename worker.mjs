@@ -8,6 +8,7 @@ import instagram from "./netlify/functions/instagram.mjs";
 import products from "./netlify/functions/products.mjs";
 import stock from "./netlify/functions/stock.mjs";
 import catalogues from "./netlify/functions/catalogues.mjs";
+import { stockItemsAndCopy } from "./netlify/lib/elysian.mjs";
 
 const ROUTES = { account, admin, catalogue, catalogues, feed, instagram, products, stock };
 const SECURITY = {
@@ -29,5 +30,10 @@ export default {
     const out = new Response(res.body, res);
     for (const [k, v] of Object.entries(SECURITY)) out.headers.set(k, v);
     return out;
+  },
+  // every 10 minutes (wrangler.toml [triggers]): send new billing-app photos/videos to Cloudinary
+  async scheduled(event, env, ctx) {
+    for (const [k, v] of Object.entries(env)) if (typeof v === "string") process.env[k] = v;
+    ctx.waitUntil(stockItemsAndCopy(null).then(r => console.log("sync-stock", r.queued, r.waiting)).catch(e => console.warn("sync-stock", e.message)));
   }
 };

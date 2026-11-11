@@ -27,7 +27,7 @@ const baseName = u => decodeURIComponent(u.split("/").pop() || "").replace(/\.[^
 
 /** public_ids already in Cloudinary, e.g. Set{"image:elysian/2026...", "video:elysian/2026..."} */
 async function syncedIds(env) {
-  if (cache.synced.data && Date.now() - cache.synced.at < 10 * 60e3) return cache.synced.data;
+  if (cache.synced.data && Date.now() - cache.synced.at < 3 * 60e3) return cache.synced.data;
   const ids = new Set();
   for (const type of ["image", "video"]) {
     let cursor = "";
@@ -45,17 +45,28 @@ async function syncedIds(env) {
 }
 
 async function copyToCloudinary(env, type, fileUrl, publicId) {
+  // async: Cloudinary fetches and converts the file in the background, so a big phone
+  // video (20-35 MB) is never cut off by the website's short time limit per visit.
+  // overwrite=false: if two visits start the same copy, the second does nothing.
   const timestamp = Math.floor(Date.now() / 1000);
-  const params = { public_id: publicId, tags: FOLDER, timestamp };
+  const params = { async: "true", overwrite: "false", public_id: publicId, tags: FOLDER, timestamp };
   const form = new URLSearchParams({ ...params, file: fileUrl, api_key: env.key, signature: signParams(params, env.secret) });
   const r = await fetch(`https://api.cloudinary.com/v1_1/${env.cloud}/${type}/upload`, { method: "POST", body: form });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(j.error?.message || `upload ${r.status}`);
-  cache.synced.data && cache.synced.data.add(`${type}:${publicId}`);
+  // the file shows on the site once Cloudinary lists it (checked every few minutes)
+  started.set(type + publicId, Date.now());
 }
+
+const started = new Map();
 
 /** Stock pieces that have a photo or video, as website items. `later(promise)` runs work after the reply. */
 export async function stockItems(later) {
+  return (await stockItemsAndCopy(later)).items;
+}
+
+/** Same, plus how many files were sent to Cloudinary (used by the timed sync). */
+export async function stockItemsAndCopy(later) {
   const stock = await loadStock();
   const env = cloudEnv();
   let ids = new Set();
@@ -89,7 +100,8 @@ export async function stockItems(later) {
   }
 
   // Copy a few new files per visit, in the background.
-  const batch = toCopy.filter(([t, , id]) => !pending.has(t + id)).slice(0, 4);
+  // started in the last 20 min = still converting at Cloudinary, don't ask again
+  const batch = toCopy.filter(([t, , id]) => !pending.has(t + id) && !(Date.now() - (started.get(t + id) || 0) < 20 * 60e3)).slice(0, 12);
   if (batch.length && env) {
     batch.forEach(([t, , id]) => pending.add(t + id));
     const job = Promise.all(batch.map(([t, url, id]) => copyToCloudinary(env, t, url, id)
@@ -97,5 +109,5 @@ export async function stockItems(later) {
       .finally(() => pending.delete(t + id))));
     later ? later(job) : await job;
   }
-  return items;
+  return { items, queued: batch.length, waiting: toCopy.length };
 }
