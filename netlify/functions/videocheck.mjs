@@ -50,6 +50,11 @@ export default async () => {
     const j = await r.json().catch(() => ({}));
     res.test_upload = r.ok && !j.error ? "worked – this video is now on Cloudinary" : (j.error?.message || `HTTP ${r.status}`);
   }
+  try {
+    const r = await fetch("https://new.sardargems.com/api/index.php?action=media_report", { headers: { "X-Api-Key": process.env.STOCK_API_KEY || "" } });
+    const j = await r.json();
+    if (j.ok) { res.files_on_server = j.data.summary; res.videos = j.data.videos; } else res.report_error = j.error || r.status;
+  } catch (e) { res.report_error = e.message; }
   return out(res);
 };
 
