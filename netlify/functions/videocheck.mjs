@@ -53,7 +53,7 @@ export default async () => {
   try {
     const r = await fetch("https://new.sardargems.com/api/index.php?action=media_report", { headers: { "X-Api-Key": process.env.STOCK_API_KEY || "" } });
     const j = await r.json();
-    if (j.ok) { res.files_on_server = j.data.summary; res.videos = j.data.videos; } else res.report_error = j.error || r.status;
+    if (j.ok) { res.files_on_server = j.data.summary; } else res.report_error = j.error || r.status;
   } catch (e) { res.report_error = e.message; }
   return out(res);
 };
