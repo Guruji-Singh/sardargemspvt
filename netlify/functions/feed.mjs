@@ -58,7 +58,6 @@ export default async (req, ctx) => {
     if (!ok) continue;
     it.cats.forEach(s => shownPer[s]++);
     const { publicId, resourceType, ...pub } = it;
-    if (!full) delete pub.weight;                                   // weights only for approved retailers
     visible.push(pub);
   }
 

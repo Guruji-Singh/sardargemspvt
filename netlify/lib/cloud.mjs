@@ -42,6 +42,7 @@ function toItem(r, cloud) {
     preview: v ? `${base}/video/upload/q_auto:low,w_480,c_limit,ac_none/${id}.mp4` : "",
     code: c.code || "", caption: c.code || "", cat: c.cat || "",
     purity: c.purity ? String(c.purity).split(",").filter(Boolean) : [],
+    weight: Number(c.weight) > 0 ? Number(c.weight) : 0,
     permalink: "", timestamp: r.created_at
   };
 }

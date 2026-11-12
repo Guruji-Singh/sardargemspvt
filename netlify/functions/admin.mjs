@@ -32,6 +32,7 @@ const tileContext = t => `cat=${t.cat}|code=${cleanCtx(t.code)}|orig=${cleanCtx(
 
 const SLUG = /^[a-z0-9-]{1,40}$/;
 const purityOf = arr => (Array.isArray(arr) ? arr : []).map(x => String(x).toUpperCase()).filter(x => PURITIES.includes(x)).filter((x, i, a) => a.indexOf(x) === i).join(",");
+const weightOf = w => { const n = Math.round(Number(w) * 1000) / 1000; return n > 0 && n < 10000 ? String(n) : ""; };
 const clean = s => String(s || "").replace(/[|=\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
 const sha1 = s => createHash("sha1").update(s).digest("hex");
 const out = (d, status = 200) => Response.json(d, { status, headers: { "Cache-Control": "no-store" } });
@@ -102,7 +103,7 @@ export default async (req) => {
       else {
         endpoint = "explicit";
         const cat = publicId.split("/")[1] || "";
-        params = { context: `code=${clean(body.code)}|cat=${cat}|purity=${purityOf(body.purity)}`, public_id: publicId, type: "upload", timestamp };
+        params = { context: `code=${clean(body.code)}|cat=${cat}|purity=${purityOf(body.purity)}|weight=${weightOf(body.weight)}`, public_id: publicId, type: "upload", timestamp };
       }
       const form = new URLSearchParams({ ...params, api_key: env.key, signature: signParams(params, env.secret) });
       const res = await fetch(`https://api.cloudinary.com/v1_1/${env.cloud}/${type}/${endpoint}`, { method: "POST", body: form });
