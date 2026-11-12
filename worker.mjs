@@ -8,9 +8,10 @@ import instagram from "./netlify/functions/instagram.mjs";
 import products from "./netlify/functions/products.mjs";
 import stock from "./netlify/functions/stock.mjs";
 import catalogues from "./netlify/functions/catalogues.mjs";
+import videocheck from "./netlify/functions/videocheck.mjs";
 import { stockItemsAndCopy } from "./netlify/lib/elysian.mjs";
 
-const ROUTES = { account, admin, catalogue, catalogues, feed, instagram, products, stock };
+const ROUTES = { account, admin, catalogue, catalogues, feed, instagram, products, stock, videocheck };
 const SECURITY = {
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
