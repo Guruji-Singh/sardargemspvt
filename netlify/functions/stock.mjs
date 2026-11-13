@@ -1,7 +1,7 @@
-// GET /api/stock — live ready stock from the billing software (Elysian, on Hostinger).
+// GET /api/stock — live ready stock from the billing app (new.sardargems.com, on Hostinger).
 //   Approved retailers: every piece in stock (code, item, karat, weights, photo, video).
 //   Guests and accounts awaiting approval: only how many pieces are in stock.
-// Needs env vars STOCK_API_URL (https://office.sardargems.com/sjh-website/stock.php) and STOCK_API_KEY.
+// Needs env var STOCK_API_KEY (the feed address is fixed in netlify/lib/elysian.mjs).
 
 import { viewerFrom, accountsReady } from "../lib/auth.mjs";
 import { loadStock } from "../lib/elysian.mjs";

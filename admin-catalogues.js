@@ -9,7 +9,7 @@
 
 const CAT_CONTACT = "Call / WhatsApp: +91 98773 13252  |  +91 62831 32334";
 const CAT_SITE = "www.sardargems.com";
-const MAX_SUPPLIER_MB = 200;         // PDFs are kept on Hostinger (sjh-website/files.php)
+const MAX_SUPPLIER_MB = 200;         // PDFs are kept on Hostinger (new.sardargems.com/sjh-website/files.php)
 const LIBS = {
   pdfjs: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
   pdfWorker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
@@ -205,7 +205,7 @@ function hostUpload(url, file, filename, onProgress){
     if (onProgress) x.upload.onprogress = e => e.lengthComputable && onProgress(e.loaded/e.total);
     x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch(e){}
       (x.status < 300 && j.ok) ? ok(j) : no(new Error(j.error || (x.status === 413 ? 'This PDF is bigger than the hosting upload limit (hPanel → PHP Configuration → upload_max_filesize / post_max_size).' : 'PDF upload failed (' + x.status + ')'))); };
-    x.onerror = () => no(new Error('Could not reach the PDF storage (office.sardargems.com). Check that files.php is uploaded.'));
+    x.onerror = () => no(new Error('Could not reach the PDF storage (new.sardargems.com). Try again in a minute.'));
     x.send(fd);
   });
 }

@@ -131,7 +131,7 @@ export default async (req) => {
     case "cat-create": {
       const slug = String(body.slug || "");
       if (!CAT_SLUG.test(slug)) return out({ error: "Bad catalogue name" }, 400);
-      if (!hostConfigured()) return out({ error: "PDF storage is not set up (STOCK_API_URL / STOCK_API_KEY missing in the hosting settings)" }, 500);
+      if (!hostConfigured()) return out({ error: "PDF storage is not set up (STOCK_API_KEY missing in the hosting settings)" }, 500);
       if (await getCatalogue(slug)) return out({ error: "A catalogue with this name already exists" }, 409);
       const dir = `${slug}-${rand()}`;
       const put = hostPutUrl(dir, `supplier-${rand()}`);

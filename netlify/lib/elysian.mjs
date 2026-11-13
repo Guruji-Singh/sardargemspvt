@@ -1,6 +1,6 @@
-// Ready stock from the billing software (Elysian, on Hostinger) and its photos/videos.
+// Ready stock from the billing app (new.sardargems.com, on Hostinger) and its photos/videos.
 //
-// The stock list comes from office.sardargems.com/sjh-website/stock.php (env STOCK_API_URL + STOCK_API_KEY).
+// The stock list comes from new.sardargems.com/sjh-website/stock.php (key: env STOCK_API_KEY).
 // Photos and videos are copied once into Cloudinary (folder "elysian/", tag "elysian") so the website can serve
 // them small and fast: photos as WebP/AVIF, iPhone .mov videos as .mp4 that plays on every phone.
 // Until a file has been copied, photos load straight from Hostinger and videos are left out.
@@ -8,14 +8,17 @@
 import { cloudEnv, signParams } from "./cloud.mjs";
 import { categoriesFromCaption } from "./catalog.mjs";
 
+/** The billing app's feed. Fixed here (not the old STOCK_API_URL setting, which pointed at Elysian). */
+export const STOCK_FEED_URL = "https://new.sardargems.com/sjh-website/stock.php";
+
 const FOLDER = "elysian";
 const cache = { stock: { at: 0, data: null }, synced: { at: 0, data: null } };
 const pending = new Set();
 
 export async function loadStock() {
   if (cache.stock.data && Date.now() - cache.stock.at < 60e3) return cache.stock.data;
-  const url = process.env.STOCK_API_URL, key = process.env.STOCK_API_KEY;
-  if (!url || !key) throw new Error("Stock link not set up");
+  const url = STOCK_FEED_URL, key = process.env.STOCK_API_KEY;
+  if (!key) throw new Error("Stock link not set up");
   const r = await fetch(url, { headers: { "X-Api-Key": key, "Accept": "application/json" } });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !Array.isArray(j.items)) throw new Error(j.error || `Stock API ${r.status}`);

@@ -9,6 +9,7 @@
 // A PDF location is "host:catalogues/<dir>/<name>.pdf" (Hostinger) or a Cloudinary raw public_id (older catalogues).
 // dir = slug + random part, so a deleted catalogue's clean-up can never touch a new one with the same name.
 
+import { STOCK_FEED_URL } from "./elysian.mjs";
 import { cloudEnv, signParams } from "./cloud.mjs";
 import { db, accountsReady } from "./auth.mjs";
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
@@ -30,12 +31,12 @@ export function checkPdfLink(params) {
 /* ---------- Hostinger PDF storage (sjh-website/files.php) ---------- */
 export const isHost = ref => String(ref || "").startsWith("host:");
 const hostPath = ref => String(ref).slice(5);
-export function hostConfigured() { return !!(process.env.STOCK_API_URL && process.env.STOCK_API_KEY); }
+export function hostConfigured() { return !!process.env.STOCK_API_KEY; }
 function hostUrl(payload, minutes = 15) {
-  if (!hostConfigured()) throw new Error("PDF storage not set up (STOCK_API_URL / STOCK_API_KEY)");
+  if (!hostConfigured()) throw new Error("PDF storage not set up (STOCK_API_KEY)");
   const body = Buffer.from(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + minutes * 60 })).toString("base64url");
   const sig = createHmac("sha256", process.env.STOCK_API_KEY).update(body).digest("base64url");
-  return new URL(`files.php?t=${body}.${sig}`, process.env.STOCK_API_URL).href;
+  return new URL(`files.php?t=${body}.${sig}`, STOCK_FEED_URL).href;
 }
 /** Where the admin page uploads a PDF to (POST, multipart field "file"). */
 export function hostPutUrl(dir, name) {
