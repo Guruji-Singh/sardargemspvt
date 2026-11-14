@@ -208,6 +208,7 @@
   .cart-pdf{background:#fff!important;color:var(--maroon)!important;border:1px solid var(--maroon)!important;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
   .cart-pdf[disabled]{opacity:.6;cursor:wait}
   #cartPdfNote{margin-top:6px;text-align:center}
+  #cartPdfNote a{color:var(--maroon);font-weight:700;text-decoration:underline}
   .cart-clear{background:none;border:0;color:var(--muted);text-decoration:underline;margin-top:10px;width:100%;cursor:pointer;font-size:14px}
 
   /* About */
@@ -843,17 +844,20 @@ async function buildCatalogue(){
 }
 let pdfReady = null;      // {file, key} — a built PDF waiting for a second tap
 const cartSig = () => JSON.stringify(SEL);
+const isPhone = () => matchMedia('(pointer:coarse)').matches && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 function pdfDownload(file, note){
-  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-  note.textContent = 'Catalogue downloaded. Attach it in WhatsApp to share.';
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a'); a.href = url; a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  note.innerHTML = `Catalogue downloaded. <a href="${url}" download="${file.name}">Download again</a>`;
 }
 async function pdfShare(file, note, b){
-  if (!(navigator.canShare && navigator.canShare({ files: [file] }))) return pdfDownload(file, note);
-  try { await navigator.share({ files: [file], title: 'Sardar Jewellery House catalogue' }); note.textContent = 'Catalogue shared.'; pdfReady = null; b.lastChild.textContent = 'Share as catalogue (PDF)'; }
+  const backup = () => { const url = URL.createObjectURL(file); return ` <a href="${url}" download="${file.name}">Download PDF</a>`; };
+  if (!isPhone() || !(navigator.canShare && navigator.canShare({ files: [file] }))) return pdfDownload(file, note);
+  try { await navigator.share({ files: [file], title: 'Sardar Jewellery House catalogue' }); note.innerHTML = 'Catalogue sent.' + backup(); pdfReady = null; b.lastChild.textContent = 'Share as catalogue (PDF)'; }
   catch(e) {
-    if (e.name === 'AbortError') { note.textContent = 'Catalogue ready. Tap the button again to share.'; return; }
-    note.textContent = 'Catalogue ready. Tap the button again to send it on WhatsApp.';
+    if (e.name === 'AbortError') { note.innerHTML = 'Catalogue ready. Tap the button again to share, or' + backup(); return; }
+    note.innerHTML = 'Catalogue ready. Tap the button again to send it on WhatsApp, or' + backup();
     b.lastChild.textContent = 'Send catalogue PDF';
   }
 }
