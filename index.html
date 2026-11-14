@@ -205,6 +205,8 @@
   .cart-row .l{font-weight:600;font-size:14px;line-height:1.3}
   .cart-row .c{font-size:12px;color:var(--muted)}
   .cart-send{background:var(--wa)!important;color:#fff!important;margin-top:14px}
+  .cart-party{display:flex;flex-direction:column;gap:6px;margin-top:14px;font-size:13px;font-weight:600;color:var(--muted)}
+  .cart-party input{height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:15px;color:inherit;background:#fff}
   .cart-pdf{background:#fff!important;color:var(--maroon)!important;border:1px solid var(--maroon)!important;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
   .cart-pdf[disabled]{opacity:.6;cursor:wait}
   #cartPdfNote{margin-top:6px;text-align:center}
@@ -594,6 +596,7 @@
     <div class="cat-note" style="margin:2px 0 6px">Send it to us on WhatsApp — we reply with weights and rates.</div>
     <div id="cartRows"></div>
     <button class="btn cart-send" id="cartSend" type="button">Send cart on WhatsApp</button>
+    <label class="cart-party" for="cartParty">Party name for the catalogue<input id="cartParty" type="text" autocomplete="organization" placeholder="e.g. Sharma Jewellers, Ludhiana" maxlength="60"></label>
     <button class="btn cart-pdf" id="cartPdf" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>Share as catalogue (PDF)</button>
     <div class="cat-note" id="cartPdfNote" hidden></div>
     <button class="cart-clear" id="cartClear" type="button">Empty cart</button>
@@ -728,6 +731,7 @@ function clearList(){ if (!confirm('Empty your cart?')) return; Object.keys(SEL)
 $('myListSend').onclick = $('pickSend').onclick = $('cartSend').onclick = sendList;
 $('myListClear').onclick = $('pickClear').onclick = $('cartClear').onclick = clearList;
 
+const cleanCode = c => { c = String(c || '').trim(); return c && c.length <= 20 && !/[,\s]{2,}|,/.test(c) ? c : ''; };
 /* any website item (ready stock, uploaded design, Instagram post) -> cart entry */
 function cartKey(it){ return it.source === 'elysian' ? it.id : (it.code || it.id); }
 function cartEntry(it){
@@ -735,9 +739,9 @@ function cartEntry(it){
   if (it.source === 'elysian') {
     const name = it.caption || cat;
     const facts = [(it.purity||[]).join(' '), it.weight ? `Net ${(+it.weight).toFixed(3)} g` : ''].filter(Boolean).join(' · ');
-    return { cat, label: [name, facts].filter(Boolean).join(' · '), thumb: it.thumbnail || it.src, link: it.thumbnail || it.src, dn: it.code || '', wt: wtText(it), pur: (it.purity||[]).join(' ') };
+    return { cat, label: [name, facts].filter(Boolean).join(' · '), thumb: it.thumbnail || it.src, link: it.thumbnail || it.src, nm: name, dn: cleanCode(it.code), wt: wtText(it), pur: (it.purity||[]).join(' ') };
   }
-  return { cat, label: [it.code || `${cat} design`, wtText(it)].filter(Boolean).join(' · '), thumb: it.thumbnail || it.src, link: it.code ? '' : (it.permalink || it.thumbnail || it.src), dn: it.code || '', wt: wtText(it), pur: (it.purity||[]).join(' ') };
+  return { cat, label: [it.code || `${cat} design`, wtText(it)].filter(Boolean).join(' · '), thumb: it.thumbnail || it.src, link: it.code ? '' : (it.permalink || it.thumbnail || it.src), nm: cat, dn: cleanCode(it.code), wt: wtText(it), pur: (it.purity||[]).join(' ') };
 }
 function changeQty(key, d, entry){
   const one = String(key).startsWith('ely_');            // a ready-stock piece is one unique piece
@@ -776,14 +780,14 @@ function loadJsPDF(){
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
     s.onload = () => ok(window.jspdf.jsPDF); s.onerror = () => no(new Error('PDF tool did not load')); document.head.appendChild(s); });
 }
-function pdfImage(src, box){            // any photo -> square white JPEG for the PDF
+function pdfImage(src, box, bg){        // any photo -> square JPEG for the PDF (bg = background colour)
   return new Promise(ok => {
     if (!src) return ok(null);
     const same = src.startsWith('/') || src.startsWith(location.origin);
     const img = new Image(); img.crossOrigin = 'anonymous';
     img.onload = () => { try {
       const c = document.createElement('canvas'); c.width = c.height = box; const g = c.getContext('2d');
-      g.fillStyle = '#fff'; g.fillRect(0, 0, box, box);
+      g.fillStyle = bg || '#fff'; g.fillRect(0, 0, box, box);
       const k = Math.min(box / img.naturalWidth, box / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
       g.drawImage(img, (box - w) / 2, (box - h) / 2, w, h); ok(c.toDataURL('image/jpeg', 0.82)); } catch(e) { ok(null); } };
     img.onerror = () => ok(null);
@@ -791,59 +795,87 @@ function pdfImage(src, box){            // any photo -> square white JPEG for th
   });
 }
 function pdfFacts(key, v){
-  const parts = String(v.label || key).split(' · ');
-  const wt = v.wt || ((String(v.label||'').match(/([\d.]+)\s*g\b/) || [])[0] || '');
-  return { dn: v.dn || parts[0] || '', wt, pur: v.pur || '' };
+  const lab = String(v.label || key), parts = lab.split(' · ');
+  const wt = v.wt || ((lab.match(/([\d.]+)\s*g\b/) || [])[1] ? (+lab.match(/([\d.]+)\s*g\b/)[1]).toFixed(3) + ' g' : '');
+  const pur = v.pur || ((lab.match(/\b\d{2}K\b/) || [])[0] || '');
+  const dn = cleanCode(v.dn) || (String(key).startsWith('ely_') ? '' : cleanCode(parts[0]));
+  const nm = v.nm || (dn && parts[0] === dn ? (v.cat || 'Design') : parts[0]) || v.cat || 'Design';
+  return { nm, dn, wt, pur };
+}
+const partyName = () => ($('cartParty').value || '').replace(/\s+/g, ' ').trim();
+const pdfFileName = () => { const p = partyName().replace(/[\\/:*?"<>|]+/g, '').slice(0, 50).trim(); return `Sardar Gems_${p || 'Catalogue'}.pdf`; };
+function pdfPhoto(src, wPx, hPx){       // photo -> JPEG cropped to fill the box (no white bars)
+  return new Promise(ok => {
+    if (!src) return ok(null);
+    const same = src.startsWith('/') || src.startsWith(location.origin);
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => { try {
+      const c = document.createElement('canvas'); c.width = wPx; c.height = hPx; const g = c.getContext('2d');
+      const k = Math.max(wPx / img.naturalWidth, hPx / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+      g.drawImage(img, (wPx - w) / 2, (hPx - h) / 2, w, h); ok(c.toDataURL('image/jpeg', 0.85)); } catch(e) { ok(null); } };
+    img.onerror = () => ok(null);
+    img.src = same ? src : '/api/img?u=' + encodeURIComponent(src.replace('/f_auto,', '/f_jpg,').replace('w_480', 'w_900'));
+  });
 }
 async function buildCatalogue(){
   const rows = Object.entries(SEL); if (!rows.length) return null;
   const JsPDF = await loadJsPDF();
   const doc = new JsPDF({ unit: 'mm', format: 'a4' });
-  const W = 210, H = 297, M = 14, GOLD = [164, 122, 44], MAROON = [107, 30, 42], INK = [30, 27, 24], MUTED = [120, 112, 104];
-  const date = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const W = 210, H = 297, M = 14, GOLD = [164, 122, 44], MAROON = [107, 30, 42], INK = [33, 29, 26], MUTED = [128, 120, 110], LINE = [226, 219, 206], TINT = [250, 246, 238];
+  const party = partyName();
+  const date = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
   const per = 6, pages = Math.ceil(rows.length / per), total = pages + 1;
-  const [logo, ...pics] = await Promise.all([pdfImage('/logo.svg', 360), ...rows.map(([, v]) => pdfImage(v.thumb, 700))]);
-  const foot = n => { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
-    doc.text('sardargems.com  ·  WhatsApp 98773 13252  ·  Sultanwind Road, Amritsar', M, H - 9);
-    doc.text(`Page ${n} of ${total}`, W - M, H - 9, { align: 'right' }); };
+  const cols = 3, gx = 6, gy = 8, cw = (W - 2 * M - gx * (cols - 1)) / cols, ih = cw * 4 / 3, cap = 17, ch = ih + cap;
+  const [logo, ...pics] = await Promise.all([pdfImage('/logo.svg', 360, '#FAF6EE'), ...rows.map(([, v]) => pdfPhoto(v.thumb, 600, 800))]);
+  const foot = n => { doc.setDrawColor(...LINE); doc.setLineWidth(0.3); doc.line(M, H - 15, W - M, H - 15);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
+    doc.text('sardargems.com   |   WhatsApp +91 98773 13252   |   Sultanwind Road, Amritsar', M, H - 10);
+    doc.text(`${n} / ${total}`, W - M, H - 10, { align: 'right' }); };
 
   // cover
-  doc.setDrawColor(...GOLD); doc.setLineWidth(0.4); doc.rect(10, 10, W - 20, H - 26);
-  if (logo) doc.addImage(logo, 'JPEG', W / 2 - 18, 70, 36, 36);
+  doc.setFillColor(...TINT); doc.rect(0, 0, W, H, 'F');
+  doc.setDrawColor(...GOLD); doc.setLineWidth(0.5); doc.rect(12, 12, W - 24, H - 30); doc.setLineWidth(0.2); doc.rect(14, 14, W - 28, H - 34);
+  if (logo) doc.addImage(logo, 'JPEG', W / 2 - 17, 62, 34, 34);
   doc.setFont('times', 'normal'); doc.setTextColor(...INK); doc.setFontSize(30);
-  doc.text('Sardar Jewellery House', W / 2, 128, { align: 'center' });
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...GOLD);
-  doc.text('B Y   S A R D A R   G E M S', W / 2, 138, { align: 'center' });
-  doc.line(W / 2 - 15, 148, W / 2 + 15, 148);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(...MUTED);
-  doc.text(`Design catalogue  ·  ${rows.length} design${rows.length === 1 ? '' : 's'}`, W / 2, 160, { align: 'center' });
-  doc.text(date, W / 2, 167, { align: 'center' });
-  doc.setFontSize(9); doc.text('Since 1978  ·  BIS Hallmarked  ·  Wholesale only', W / 2, H - 40, { align: 'center' });
-  foot(1);
+  doc.text('Sardar Jewellery House', W / 2, 120, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...GOLD);
+  doc.text('B Y   S A R D A R   G E M S', W / 2, 129, { align: 'center' });
+  doc.setLineWidth(0.4); doc.line(W / 2 - 14, 138, W / 2 + 14, 138);
+  doc.setFont('times', 'italic'); doc.setFontSize(15); doc.setTextColor(...INK);
+  doc.text('Design Selection', W / 2, 152, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...MUTED);
+  if (party) { doc.text('Prepared for', W / 2, 168, { align: 'center' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...MAROON); doc.text(party, W / 2, 176, { align: 'center', maxWidth: W - 60 });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...MUTED); }
+  doc.text(`${rows.length} design${rows.length === 1 ? '' : 's'}   ·   ${date}`, W / 2, party ? 188 : 168, { align: 'center' });
+  doc.setFontSize(8.5); doc.text('Est. 1978   ·   BIS Hallmarked Gold   ·   Wholesale Only', W / 2, H - 34, { align: 'center' });
+  doc.setFontSize(7.5); doc.text('sardargems.com   |   WhatsApp +91 98773 13252   |   Sultanwind Road, Amritsar', W / 2, H - 10, { align: 'center' });
 
-  // product pages: 2 x 3 grid
-  const gx = 8, gy = 8, cw = (W - 2 * M - gx) / 2, top = 30, ch = (H - top - 22 - 2 * gy) / 3, cap = 14;
+  // product pages: 3 x 2 grid of portrait photos
   rows.forEach(([key, v], i) => {
     const slot = i % per;
     if (!slot) { doc.addPage(); const n = Math.floor(i / per) + 2;
-      doc.setFont('times', 'normal'); doc.setFontSize(15); doc.setTextColor(...INK); doc.text('Sardar Jewellery House', M, 20);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...GOLD); doc.text('BY SARDAR GEMS', W - M, 20, { align: 'right' });
-      doc.setDrawColor(225, 218, 205); doc.setLineWidth(0.3); doc.line(M, 24, W - M, 24); foot(n); }
-    const x = M + (slot % 2) * (cw + gx), y = top + Math.floor(slot / 2) * (ch + gy), f = pdfFacts(key, v);
-    doc.setDrawColor(225, 218, 205); doc.rect(x, y, cw, ch);
-    const side = Math.min(cw - 6, ch - cap - 6);
-    if (pics[i]) doc.addImage(pics[i], 'JPEG', x + (cw - side) / 2, y + 3, side, side);
-    else { doc.setFillColor(250, 246, 238); doc.rect(x + (cw - side) / 2, y + 3, side, side, 'F'); }
-    doc.line(x, y + ch - cap, x + cw, y + ch - cap);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...MAROON);
-    doc.text(f.dn ? 'Design ' + f.dn : (v.cat || 'Design'), x + 4, y + ch - cap + 6, { maxWidth: cw - 8 });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...INK);
-    doc.text([f.wt ? 'Weight ' + f.wt : '', f.pur].filter(Boolean).join('  ·  ') || ' ', x + 4, y + ch - cap + 11);
+      doc.setFont('times', 'normal'); doc.setFontSize(14); doc.setTextColor(...INK); doc.text('Sardar Jewellery House', M, 19);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
+      doc.text(party ? 'Selection for ' + party : 'Design Selection', W - M, 19, { align: 'right', maxWidth: 95 });
+      doc.setDrawColor(...GOLD); doc.setLineWidth(0.4); doc.line(M, 23, W - M, 23); foot(n); }
+    const x = M + (slot % cols) * (cw + gx), y = 32 + Math.floor(slot / cols) * (ch + gy), f = pdfFacts(key, v);
+    if (pics[i]) doc.addImage(pics[i], 'JPEG', x, y, cw, ih);
+    else { doc.setFillColor(...TINT); doc.rect(x, y, cw, ih, 'F'); doc.setFontSize(8); doc.setTextColor(...MUTED); doc.text('Photo on request', x + cw / 2, y + ih / 2, { align: 'center' }); }
+    doc.setDrawColor(...LINE); doc.setLineWidth(0.3); doc.rect(x, y, cw, ch);
+    // reference number badge
+    doc.setFillColor(255, 255, 255); doc.rect(x + 2.5, y + 2.5, 9, 5.5, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...MAROON); doc.text(String(i + 1).padStart(2, '0'), x + 7, y + 6.3, { align: 'center' });
+    // caption
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+    doc.text(doc.splitTextToSize(f.nm, cw - 6)[0], x + 3, y + ih + 6.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...MUTED);
+    doc.text([f.wt ? 'Net ' + f.wt : '', f.pur, f.dn ? '#' + f.dn : ''].filter(Boolean).join('  ·  ') || ' ', x + 3, y + ih + 12, { maxWidth: cw - 6 });
   });
   return doc.output('blob');
 }
 let pdfReady = null;      // {file, key} — a built PDF waiting for a second tap
-const cartSig = () => JSON.stringify(SEL);
+const cartSig = () => JSON.stringify(SEL) + '|' + partyName();
 const isPhone = () => matchMedia('(pointer:coarse)').matches && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 function pdfDownload(file, note){
   const url = URL.createObjectURL(file);
@@ -861,6 +893,7 @@ async function pdfShare(file, note, b){
     b.lastChild.textContent = 'Send catalogue PDF';
   }
 }
+$('cartParty').addEventListener('change', () => store.set('sjh_party', partyName()));
 $('cartPdf').onclick = async () => {
   const b = $('cartPdf'), note = $('cartPdfNote'); if (!selCount()) return;
   note.hidden = false;
@@ -868,13 +901,13 @@ $('cartPdf').onclick = async () => {
   b.disabled = true; note.textContent = 'Making your catalogue…';
   try {
     const blob = await buildCatalogue();
-    const file = new File([blob], `SardarGems-Catalogue-${new Date().toISOString().slice(0,10)}.pdf`, { type: 'application/pdf' });
+    const file = new File([blob], pdfFileName(), { type: 'application/pdf' });
     pdfReady = { file, key: cartSig() };
     b.disabled = false;
     await pdfShare(file, note, b);
   } catch(e) { note.textContent = 'Could not make the PDF. Check your internet and try again.'; b.disabled = false; }
 };
-function openCart(){ renderCart(); $('cart').hidden = false; document.body.classList.add('locked'); }
+function openCart(){ if (!$('cartParty').value) { const v = FEED && FEED.viewer; $('cartParty').value = store.get('sjh_party') || (v && (v.shop || v.name)) || ''; } renderCart(); $('cart').hidden = false; document.body.classList.add('locked'); }
 function closeCart(){ $('cart').hidden = true; if (!panelCat && !$('pick').classList.contains('open')) document.body.classList.remove('locked'); }
 $('cartFab').onclick = $('tabCart').onclick = openCart; $('cartClose').onclick = closeCart;
 $('cart').addEventListener('click', e => { if (e.target === $('cart')) closeCart(); });
